@@ -52,7 +52,8 @@ type SentinelConfig struct {
 }
 
 type AWSConfig struct {
-	Region string `yaml:"region"`
+	Region   string `yaml:"region"`
+	Endpoint string `yaml:"endpoint"`
 }
 
 type S3Config struct {
@@ -111,6 +112,9 @@ func Load(path string) (*Config, error) {
 func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("AWS_REGION"); v != "" {
 		cfg.AWS.Region = v
+	}
+	if v := os.Getenv("AWS_ENDPOINT_URL"); v != "" {
+		cfg.AWS.Endpoint = v
 	}
 	if v := os.Getenv("S3_BUCKET"); v != "" {
 		cfg.S3.Bucket = v

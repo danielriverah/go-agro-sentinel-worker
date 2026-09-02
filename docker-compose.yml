@@ -1,0 +1,66 @@
+services:
+  api:
+    build: .
+    command: api
+    ports:
+      - "6000:6000"
+    environment:
+      CONFIG_PATH: /etc/agro-sentinel/config.yaml
+      MYSQL_HOST: mysql
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devpass}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: worker
+    environment:
+      CONFIG_PATH: /etc/agro-sentinel/config.yaml
+      MYSQL_HOST: mysql
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devpass}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  sync:
+    build: .
+    command: sync
+    environment:
+      CONFIG_PATH: /etc/agro-sentinel/config.yaml
+      MYSQL_HOST: mysql
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devpass}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-devpass}
+      MYSQL_DATABASE: agro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,sqs,dynamodb

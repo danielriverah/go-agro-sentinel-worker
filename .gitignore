@@ -1,0 +1,23 @@
+# Binaries
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test
+*.test
+*.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Config with secrets
+configs/config.yaml
+!configs/config.example.yaml
+
+# Temp
+/tmp/

@@ -1,0 +1,55 @@
+app:
+  name: agro-sentinel-worker
+  environment: development
+
+server:
+  host: 0.0.0.0
+  port: 6000
+
+sync:
+  interval_minutes: 15
+  dias_margen_monitoreo: 30
+
+processing:
+  temp_dir: /tmp/agro-sentinel
+  target_resolution: 10
+  resampling_method: bilinear
+  workers: 1
+  downloads_concurrency: 2
+
+sentinel:
+  cloud_cover_scene_max: 70
+  cloud_cover_production_max: 23
+
+aws:
+  region: us-west-2
+
+s3:
+  bucket: agro-sentinel-bucket
+  prefix: sentinel/producciones
+
+sqs:
+  queue_url: ""
+
+dynamodb:
+  table_producciones: monitoring_producciones
+  table_escenas: monitoring_escenas
+
+mysql:
+  host: localhost
+  port: 3306
+  database: agro
+  user: ""
+  password: ""
+
+ia:
+  enabled: true
+  service_url: http://localhost:8081
+  timeout_seconds: 60
+
+gdal:
+  timeout_seconds: 300
+
+logging:
+  level: info
+  format: json

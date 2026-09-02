@@ -62,7 +62,10 @@ type S3Config struct {
 }
 
 type SQSConfig struct {
-	QueueURL string `yaml:"queue_url"`
+	QueueURL    string `yaml:"queue_url"`
+	MaxMessages int    `yaml:"max_messages"`
+	WaitSeconds int    `yaml:"wait_seconds"`
+	MaxRetries  int    `yaml:"max_retries"`
 }
 
 type DynamoDBConfig struct {

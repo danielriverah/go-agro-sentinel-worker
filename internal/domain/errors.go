@@ -14,6 +14,7 @@ const (
 	ErrMySQL      ErrType = "MYSQL_ERROR"
 	ErrDynamoDB   ErrType = "DYNAMODB_ERROR"
 	ErrDisk       ErrType = "DISK_ERROR"
+	ErrSQS        ErrType = "SQS_ERROR"
 )
 
 type ProcessingError struct {

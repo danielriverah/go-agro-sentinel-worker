@@ -40,6 +40,7 @@ type GDALExecutor interface {
 // ProductionRepository is the subset of database.ProductionRepo the worker needs.
 type ProductionRepository interface {
 	GetByProduccionID(ctx context.Context, produccionID int64) (*domain.Production, error)
+	SetBloqueado(ctx context.Context, produccionID int64, motivo string) error
 }
 
 // SceneRepository is the subset of database.SceneRepo the worker needs.
@@ -281,6 +282,12 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 				iaAnalysis = nil
 			} else {
 				outputs = append(outputs, outputFile{fileType: domain.FileAnalisis, path: analisisPath, name: "analisis.json"})
+			}
+
+			if iaAnalysis != nil && iaAnalysis.PosibleCosecha {
+				if err := w.deps.Productions.SetBloqueado(ctx, production.ProduccionID, "posible_cosecha detectada por IA"); err != nil {
+					w.log.Error("failed to block production after posible_cosecha detection", "produccion_id", production.ProduccionID, "scene_id", scene.SceneID, "error", err)
+				}
 			}
 		}
 	} else {

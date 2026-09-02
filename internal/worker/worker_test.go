@@ -17,8 +17,14 @@ import (
 // ---- mocks ----
 
 type mockProductionRepo struct {
+	mu sync.Mutex
+
 	production *domain.Production
 	err        error
+
+	bloqueadoCalled bool
+	bloqueadoMotivo string
+	bloqueadoErr    error
 }
 
 func (m *mockProductionRepo) GetByProduccionID(ctx context.Context, produccionID int64) (*domain.Production, error) {
@@ -26,6 +32,14 @@ func (m *mockProductionRepo) GetByProduccionID(ctx context.Context, produccionID
 		return nil, m.err
 	}
 	return m.production, nil
+}
+
+func (m *mockProductionRepo) SetBloqueado(ctx context.Context, produccionID int64, motivo string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bloqueadoCalled = true
+	m.bloqueadoMotivo = motivo
+	return m.bloqueadoErr
 }
 
 type mockSceneRepo struct {
@@ -520,6 +534,58 @@ func TestProcessScene_IAError_StillCompletes(t *testing.T) {
 		if f.FileType == domain.FileAnalisis {
 			t.Error("analisis.json should not be registered when IA fails")
 		}
+	}
+}
+
+func TestProcessScene_PosibleCosecha_BlocksProduction(t *testing.T) {
+	h := newHarness(t, cloudCoverBuckets(12))
+	h.ia = &mockIA{result: &domain.AnalysisResult{
+		EstadoGeneral:  "maduro",
+		PosibleCosecha: true,
+		Confianza:      0.9,
+	}}
+	h.deps.IA = h.ia
+	w := New(h.deps)
+
+	if err := w.ProcessScene(context.Background(), 1234, "S2A_test_scene"); err != nil {
+		t.Fatalf("ProcessScene failed: %v", err)
+	}
+
+	if !h.prodRepo.bloqueadoCalled {
+		t.Error("expected SetBloqueado to be called when posible_cosecha is true")
+	}
+	if h.prodRepo.bloqueadoMotivo == "" {
+		t.Error("expected a non-empty motivo for SetBloqueado")
+	}
+
+	final := h.sceneRepo.upserted
+	if final == nil {
+		t.Fatal("expected scene finalized")
+	}
+	if final.Status != domain.StatusCompleted {
+		t.Errorf("status = %v, want COMPLETED", final.Status)
+	}
+	if !final.HasAnalisis {
+		t.Error("expected HasAnalisis = true")
+	}
+}
+
+func TestProcessScene_NoCosecha_DoesNotBlockProduction(t *testing.T) {
+	h := newHarness(t, cloudCoverBuckets(12))
+	h.ia = &mockIA{result: &domain.AnalysisResult{
+		EstadoGeneral:  "bueno",
+		PosibleCosecha: false,
+		Confianza:      0.9,
+	}}
+	h.deps.IA = h.ia
+	w := New(h.deps)
+
+	if err := w.ProcessScene(context.Background(), 1234, "S2A_test_scene"); err != nil {
+		t.Fatalf("ProcessScene failed: %v", err)
+	}
+
+	if h.prodRepo.bloqueadoCalled {
+		t.Error("expected SetBloqueado not to be called when posible_cosecha is false")
 	}
 }
 

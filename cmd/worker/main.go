@@ -14,6 +14,7 @@ import (
 	"agro-sentinel-worker/internal/infrastructure/aws"
 	"agro-sentinel-worker/internal/infrastructure/database"
 	"agro-sentinel-worker/internal/infrastructure/gdal"
+	"agro-sentinel-worker/internal/infrastructure/ia"
 	"agro-sentinel-worker/internal/logger"
 	"agro-sentinel-worker/internal/worker"
 )
@@ -76,7 +77,7 @@ func main() {
 		S3:          s3Client,
 		Executor:    executor,
 		Bands:       stacBandResolver{},
-		IA:          nil, // wired in Task 13
+		IA:          ia.New(cfg.IA),
 		Processing:  cfg.Processing,
 		Sentinel:    cfg.Sentinel,
 		S3Config:    cfg.S3,

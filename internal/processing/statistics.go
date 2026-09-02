@@ -39,12 +39,12 @@ type gdalInfoStatsJSON struct {
 	Bands []struct {
 		Band      int `json:"band"`
 		Metadata  map[string]json.RawMessage `json:"metadata"`
-		Statistics struct {
+		ComputedStatistics struct {
 			Minimum   float64 `json:"minimum"`
 			Maximum   float64 `json:"maximum"`
 			Mean      float64 `json:"mean"`
 			StdDev    float64 `json:"stdDev"`
-		} `json:"stats"`
+		} `json:"computedStatistics"`
 		Histogram struct {
 			Count   int       `json:"count"`
 			Min     float64   `json:"min"`
@@ -89,10 +89,10 @@ func CalculateBandStatistics(ctx context.Context, executor GDALExecutor, multiba
 		}
 		b := parsed.Bands[i]
 		stats := BandStats{
-			Mean: b.Statistics.Mean,
-			Std:  b.Statistics.StdDev,
-			Min:  b.Statistics.Minimum,
-			Max:  b.Statistics.Maximum,
+			Mean: b.ComputedStatistics.Mean,
+			Std:  b.ComputedStatistics.StdDev,
+			Min:  b.ComputedStatistics.Minimum,
+			Max:  b.ComputedStatistics.Maximum,
 		}
 		p25, p50, p75 := percentilesFromHistogram(b.Histogram.Min, b.Histogram.Max, b.Histogram.Buckets, stats.Mean)
 		stats.P25, stats.P50, stats.P75 = p25, p50, p75
@@ -135,10 +135,10 @@ func CalculateIndexStatistics(ctx context.Context, executor GDALExecutor, multib
 
 		b := parsed.Bands[0]
 		stats := IndexStats{
-			Mean: b.Statistics.Mean,
-			Std:  b.Statistics.StdDev,
-			Min:  b.Statistics.Minimum,
-			Max:  b.Statistics.Maximum,
+			Mean: b.ComputedStatistics.Mean,
+			Std:  b.ComputedStatistics.StdDev,
+			Min:  b.ComputedStatistics.Minimum,
+			Max:  b.ComputedStatistics.Maximum,
 		}
 		p25, p50, p75 := percentilesFromHistogram(b.Histogram.Min, b.Histogram.Max, b.Histogram.Buckets, stats.Mean)
 		stats.P25, stats.P50, stats.P75 = p25, p50, p75

@@ -26,6 +26,13 @@ func (j *JobDir) root() string {
 	return filepath.Join(j.baseDir, "jobs", j.jobID)
 }
 
+// Root returns {baseDir}/jobs/{jobID}, the job's top-level directory. It is
+// the path processing functions that lay out their own work/output
+// subdirectories (e.g. processing.MultibandBuilder.Build) expect.
+func (j *JobDir) Root() string {
+	return j.root()
+}
+
 // Input returns {baseDir}/jobs/{jobID}/input/.
 func (j *JobDir) Input() string {
 	return filepath.Join(j.root(), "input")

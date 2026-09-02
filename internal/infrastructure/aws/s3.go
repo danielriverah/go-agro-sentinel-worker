@@ -127,6 +127,17 @@ func (c *S3Client) PresignGetObject(ctx context.Context, bucket, key string, exp
 	return req.URL, nil
 }
 
+// HeadBucket checks if a bucket exists and is accessible.
+func (c *S3Client) HeadBucket(ctx context.Context, bucket string) error {
+	_, err := c.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: awssdk.String(bucket),
+	})
+	if err != nil {
+		return fmt.Errorf("checking s3 bucket %s: %w", bucket, err)
+	}
+	return nil
+}
+
 // BuildKey builds the canonical S3 key for a scene file: prefix/produccionID/sceneID/fileName.
 func BuildKey(prefix string, produccionID int64, sceneID string, fileName string) string {
 	return fmt.Sprintf("%s/%d/%s/%s", prefix, produccionID, sceneID, fileName)

@@ -3,8 +3,11 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"agro-sentinel-worker/internal/domain"
@@ -42,6 +45,55 @@ type Syncer interface {
 	RunOnce(ctx context.Context) error
 }
 
+// DBPinger checks database connectivity. Implemented by *sql.DB.
+type DBPinger interface {
+	PingContext(ctx context.Context) error
+}
+
+// S3Checker checks S3 bucket accessibility. Implemented by *aws.S3Client.
+type S3Checker interface {
+	HeadBucket(ctx context.Context, bucket string) error
+}
+
+// DynamoDBChecker checks DynamoDB table accessibility. Implemented by *aws.DynamoDBClient.
+type DynamoDBChecker interface {
+	DescribeTable(ctx context.Context, tableName string) error
+}
+
+// GDALExecutor runs GDAL commands. Implemented by *GDALCommand.
+type GDALExecutor interface {
+	Run(ctx context.Context) (string, error)
+}
+
+// GDALCommand wraps exec.CommandContext to run GDAL version check.
+type GDALCommand struct {
+	// NewCmd is a function that creates an exec.Cmd. Can be overridden in tests.
+	NewCmd func(ctx context.Context, name string, args ...string) interface {
+		Output() ([]byte, error)
+	}
+}
+
+// NewGDALCommand creates a GDAL executor that runs `gdalinfo --version`.
+func NewGDALCommand() *GDALCommand {
+	return &GDALCommand{
+		NewCmd: func(ctx context.Context, name string, args ...string) interface {
+			Output() ([]byte, error)
+		} {
+			return exec.CommandContext(ctx, name, args...)
+		},
+	}
+}
+
+// Run executes `gdalinfo --version` and returns the version output.
+func (g *GDALCommand) Run(ctx context.Context) (string, error) {
+	cmd := g.NewCmd(ctx, "gdalinfo", "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("running gdalinfo: %w", err)
+	}
+	return string(output), nil
+}
+
 // HealthHandler reports basic liveness.
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -58,6 +110,10 @@ type Handlers struct {
 	S3          Presigner
 	S3Bucket    string
 	Sync        Syncer
+	DB          DBPinger
+	S3Health    S3Checker
+	DynamoDB    DynamoDBChecker
+	GDAL        GDALExecutor
 }
 
 // desbloquearRequest is the optional body for POST .../desbloquear.
@@ -200,6 +256,67 @@ func (h *Handlers) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	JSON(w, http.StatusAccepted, map[string]string{"status": "triggered"})
+}
+
+// healthDependencyStatus represents the status of a single dependency.
+type healthDependencyStatus struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+// HealthDependencies handles GET /health/dependencies. It checks the status
+// of GDAL, MySQL, S3, and DynamoDB and returns 200 with status info for each.
+func (h *Handlers) HealthDependencies(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	deps := map[string]healthDependencyStatus{}
+
+	// Check MySQL
+	if h.DB != nil {
+		if err := h.DB.PingContext(ctx); err != nil {
+			deps["mysql"] = healthDependencyStatus{Status: "error", Message: err.Error()}
+		} else {
+			deps["mysql"] = healthDependencyStatus{Status: "ok"}
+		}
+	} else {
+		deps["mysql"] = healthDependencyStatus{Status: "error", Message: "database not configured"}
+	}
+
+	// Check GDAL
+	if h.GDAL != nil {
+		if version, err := h.GDAL.Run(ctx); err != nil {
+			deps["gdal"] = healthDependencyStatus{Status: "error", Message: err.Error()}
+		} else {
+			deps["gdal"] = healthDependencyStatus{Status: "ok", Version: strings.TrimSpace(version)}
+		}
+	} else {
+		deps["gdal"] = healthDependencyStatus{Status: "error", Message: "GDAL executor not configured"}
+	}
+
+	// Check S3
+	if h.S3Health != nil {
+		if err := h.S3Health.HeadBucket(ctx, h.S3Bucket); err != nil {
+			deps["s3"] = healthDependencyStatus{Status: "error", Message: err.Error()}
+		} else {
+			deps["s3"] = healthDependencyStatus{Status: "ok"}
+		}
+	} else {
+		deps["s3"] = healthDependencyStatus{Status: "error", Message: "S3 client not configured"}
+	}
+
+	// Check DynamoDB
+	if h.DynamoDB != nil {
+		if err := h.DynamoDB.DescribeTable(ctx, ""); err != nil {
+			deps["dynamodb"] = healthDependencyStatus{Status: "error", Message: err.Error()}
+		} else {
+			deps["dynamodb"] = healthDependencyStatus{Status: "ok"}
+		}
+	} else {
+		deps["dynamodb"] = healthDependencyStatus{Status: "error", Message: "DynamoDB client not configured"}
+	}
+
+	JSON(w, http.StatusOK, deps)
 }
 
 // parseInt64Param parses the named path value as an int64, writing a 400

@@ -117,3 +117,14 @@ func (c *DynamoDBClient) ListEscenas(ctx context.Context, tableName string, prod
 
 	return results, nil
 }
+
+// DescribeTable checks if a table exists and is accessible.
+func (c *DynamoDBClient) DescribeTable(ctx context.Context, tableName string) error {
+	_, err := c.client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
+		TableName: awssdk.String(tableName),
+	})
+	if err != nil {
+		return fmt.Errorf("checking dynamodb table %s: %w", tableName, err)
+	}
+	return nil
+}

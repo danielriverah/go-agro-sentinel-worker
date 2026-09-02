@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +119,39 @@ func (m *mockSyncer) RunOnce(ctx context.Context) error {
 		close(m.called)
 	}
 	return m.err
+}
+
+type mockDBPinger struct {
+	err error
+}
+
+func (m *mockDBPinger) PingContext(ctx context.Context) error {
+	return m.err
+}
+
+type mockS3Checker struct {
+	err error
+}
+
+func (m *mockS3Checker) HeadBucket(ctx context.Context, bucket string) error {
+	return m.err
+}
+
+type mockDynamoDBChecker struct {
+	err error
+}
+
+func (m *mockDynamoDBChecker) DescribeTable(ctx context.Context, tableName string) error {
+	return m.err
+}
+
+type mockGDALExecutor struct {
+	version string
+	err     error
+}
+
+func (m *mockGDALExecutor) Run(ctx context.Context) (string, error) {
+	return m.version, m.err
 }
 
 // --- tests ---
@@ -308,5 +342,113 @@ func TestTriggerSyncNotConfigured(t *testing.T) {
 
 	if w.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", w.Result().StatusCode)
+	}
+}
+
+func TestHealthDependenciesAllOk(t *testing.T) {
+	h := &Handlers{
+		DB:        &mockDBPinger{err: nil},
+		GDAL:      &mockGDALExecutor{version: "GDAL 3.9.3", err: nil},
+		S3Health:  &mockS3Checker{err: nil},
+		DynamoDB:  &mockDynamoDBChecker{err: nil},
+		S3Bucket:  "test-bucket",
+	}
+
+	req := httptest.NewRequest("GET", "/health/dependencies", nil)
+	w := httptest.NewRecorder()
+
+	h.HealthDependencies(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var body struct {
+		Data map[string]healthDependencyStatus `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	deps := body.Data
+	if deps["mysql"].Status != "ok" {
+		t.Errorf("mysql status = %q, want ok", deps["mysql"].Status)
+	}
+	if deps["gdal"].Status != "ok" {
+		t.Errorf("gdal status = %q, want ok", deps["gdal"].Status)
+	}
+	if deps["gdal"].Version != "GDAL 3.9.3" {
+		t.Errorf("gdal version = %q, want GDAL 3.9.3", deps["gdal"].Version)
+	}
+	if deps["s3"].Status != "ok" {
+		t.Errorf("s3 status = %q, want ok", deps["s3"].Status)
+	}
+	if deps["dynamodb"].Status != "ok" {
+		t.Errorf("dynamodb status = %q, want ok", deps["dynamodb"].Status)
+	}
+}
+
+func TestHealthDependenciesWithErrors(t *testing.T) {
+	h := &Handlers{
+		DB:        &mockDBPinger{err: nil},
+		GDAL:      &mockGDALExecutor{version: "", err: context.DeadlineExceeded},
+		S3Health:  &mockS3Checker{err: nil},
+		DynamoDB:  &mockDynamoDBChecker{err: context.DeadlineExceeded},
+		S3Bucket:  "test-bucket",
+	}
+
+	req := httptest.NewRequest("GET", "/health/dependencies", nil)
+	w := httptest.NewRecorder()
+
+	h.HealthDependencies(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 even with errors", resp.StatusCode)
+	}
+
+	var body struct {
+		Data map[string]healthDependencyStatus `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	deps := body.Data
+	if deps["gdal"].Status != "error" {
+		t.Errorf("gdal status = %q, want error", deps["gdal"].Status)
+	}
+	if deps["dynamodb"].Status != "error" {
+		t.Errorf("dynamodb status = %q, want error", deps["dynamodb"].Status)
+	}
+}
+
+func TestHealthDependenciesNotConfigured(t *testing.T) {
+	h := &Handlers{}
+
+	req := httptest.NewRequest("GET", "/health/dependencies", nil)
+	w := httptest.NewRecorder()
+
+	h.HealthDependencies(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var body struct {
+		Data map[string]healthDependencyStatus `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	deps := body.Data
+	if deps["mysql"].Status != "error" {
+		t.Errorf("mysql status = %q, want error when not configured", deps["mysql"].Status)
+	}
+	if !strings.Contains(deps["mysql"].Message, "not configured") {
+		t.Errorf("mysql message = %q, want 'not configured'", deps["mysql"].Message)
 	}
 }

@@ -67,6 +67,10 @@ func main() {
 		S3:          s3Client,
 		S3Bucket:    cfg.S3.Bucket,
 		Sync:        syncer,
+		DB:          db,
+		S3Health:    s3Client,
+		DynamoDB:    dynamoClient,
+		GDAL:        apphttp.NewGDALCommand(),
 	}
 
 	router := apphttp.NewRouter(l, h)

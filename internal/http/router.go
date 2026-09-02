@@ -11,6 +11,7 @@ func NewRouter(logger *slog.Logger, h *Handlers) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", HealthHandler)
+	mux.HandleFunc("GET /health/dependencies", h.HealthDependencies)
 
 	mux.HandleFunc("GET /docs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")

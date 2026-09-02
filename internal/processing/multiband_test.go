@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"agro-sentinel-worker/internal/config"
@@ -42,6 +43,19 @@ func (m *mockExecutor) Run(ctx context.Context, command string, args []string) (
 			} else {
 				outputPath = args[0]
 			}
+		}
+	case "gdal_calc.py":
+		// args include a "--outfile=<path>" flag.
+		for _, a := range args {
+			if strings.HasPrefix(a, "--outfile=") {
+				outputPath = strings.TrimPrefix(a, "--outfile=")
+				break
+			}
+		}
+	case "gdaldem":
+		// args: color-relief input colorfile output [flags...]
+		if len(args) >= 4 {
+			outputPath = args[3]
 		}
 	default:
 		// gdalwarp/gdal_translate: args: [...flags...] input output

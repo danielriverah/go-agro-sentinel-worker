@@ -186,3 +186,240 @@ func TestProductionRepo_IncrementEscenas(t *testing.T) {
 		t.Errorf("expected total_escenas_validas=1, got %d", got.TotalEscenasValidas)
 	}
 }
+
+func TestProductionRepo_UpsertWithNewFields(t *testing.T) {
+	db := testDB(t)
+	repo := NewProductionRepo(db)
+	ctx := context.Background()
+
+	produccionID := randomID()
+	p := &domain.Production{
+		ProduccionID:     produccionID,
+		ArticuloID:       12345,
+		CentroCostoID:    67890,
+		NombreRancho:     "Rancho El Dorado",
+		Cultivo:          "Maiz",
+		Ciclo:            "2026-A",
+		BBox:             &domain.BBox{MinX: -60.1, MinY: -34.5, MaxX: -60.0, MaxY: -34.4},
+		Monitoring:       true,
+		TargetResolution: 10,
+		CloudCoverMax:    23.0,
+	}
+
+	if err := repo.Upsert(ctx, p); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	got, err := repo.GetByProduccionID(ctx, produccionID)
+	if err != nil {
+		t.Fatalf("GetByProduccionID: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected production, got nil")
+	}
+	if got.ArticuloID != 12345 {
+		t.Errorf("unexpected articulo_id: got %d, want %d", got.ArticuloID, 12345)
+	}
+	if got.CentroCostoID != 67890 {
+		t.Errorf("unexpected centro_costo_id: got %d, want %d", got.CentroCostoID, 67890)
+	}
+	if got.NombreRancho != "Rancho El Dorado" {
+		t.Errorf("unexpected nombre_rancho: got %q, want %q", got.NombreRancho, "Rancho El Dorado")
+	}
+}
+
+func TestProductionRepo_GetByArticuloID(t *testing.T) {
+	db := testDB(t)
+	repo := NewProductionRepo(db)
+	ctx := context.Background()
+
+	articuloID := int64(12345)
+
+	// Create multiple productions with the same articulo_id
+	prodID1 := randomID()
+	if err := repo.Upsert(ctx, &domain.Production{
+		ProduccionID: prodID1,
+		ArticuloID:   articuloID,
+		Cultivo:      "Maiz",
+		Ciclo:        "2026-A",
+	}); err != nil {
+		t.Fatalf("Upsert 1: %v", err)
+	}
+
+	prodID2 := randomID()
+	if err := repo.Upsert(ctx, &domain.Production{
+		ProduccionID: prodID2,
+		ArticuloID:   articuloID,
+		Cultivo:      "Soja",
+		Ciclo:        "2026-B",
+	}); err != nil {
+		t.Fatalf("Upsert 2: %v", err)
+	}
+
+	// Create production with different articulo_id
+	prodID3 := randomID()
+	if err := repo.Upsert(ctx, &domain.Production{
+		ProduccionID: prodID3,
+		ArticuloID:   99999,
+		Cultivo:      "Trigo",
+		Ciclo:        "2026-C",
+	}); err != nil {
+		t.Fatalf("Upsert 3: %v", err)
+	}
+
+	// List by articulo_id
+	results, err := repo.GetByArticuloID(ctx, articuloID)
+	if err != nil {
+		t.Fatalf("GetByArticuloID: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+	}
+
+	// Verify correct productions returned
+	var found1, found2 bool
+	for _, p := range results {
+		if p.ProduccionID == prodID1 {
+			found1 = true
+		}
+		if p.ProduccionID == prodID2 {
+			found2 = true
+		}
+	}
+	if !found1 || !found2 {
+		t.Error("expected both productions in results")
+	}
+}
+
+func TestProductionRepo_GetByArticuloID_Empty(t *testing.T) {
+	db := testDB(t)
+	repo := NewProductionRepo(db)
+	ctx := context.Background()
+
+	nonExistentArticuloID := int64(999999)
+	results, err := repo.GetByArticuloID(ctx, nonExistentArticuloID)
+	if err != nil {
+		t.Fatalf("GetByArticuloID: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestProductionRepo_GetByCentroCostoID(t *testing.T) {
+	db := testDB(t)
+	repo := NewProductionRepo(db)
+	ctx := context.Background()
+
+	centroCostoID := int64(67890)
+
+	// Create multiple productions with the same centro_costo_id
+	prodID1 := randomID()
+	if err := repo.Upsert(ctx, &domain.Production{
+		ProduccionID:  prodID1,
+		CentroCostoID: centroCostoID,
+		Cultivo:       "Maiz",
+		Ciclo:         "2026-A",
+	}); err != nil {
+		t.Fatalf("Upsert 1: %v", err)
+	}
+
+	prodID2 := randomID()
+	if err := repo.Upsert(ctx, &domain.Production{
+		ProduccionID:  prodID2,
+		CentroCostoID: centroCostoID,
+		Cultivo:       "Soja",
+		Ciclo:         "2026-B",
+	}); err != nil {
+		t.Fatalf("Upsert 2: %v", err)
+	}
+
+	// Create production with different centro_costo_id
+	prodID3 := randomID()
+	if err := repo.Upsert(ctx, &domain.Production{
+		ProduccionID:  prodID3,
+		CentroCostoID: 11111,
+		Cultivo:       "Trigo",
+		Ciclo:         "2026-C",
+	}); err != nil {
+		t.Fatalf("Upsert 3: %v", err)
+	}
+
+	// List by centro_costo_id
+	results, err := repo.GetByCentroCostoID(ctx, centroCostoID)
+	if err != nil {
+		t.Fatalf("GetByCentroCostoID: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+	}
+
+	// Verify correct productions returned
+	var found1, found2 bool
+	for _, p := range results {
+		if p.ProduccionID == prodID1 {
+			found1 = true
+		}
+		if p.ProduccionID == prodID2 {
+			found2 = true
+		}
+	}
+	if !found1 || !found2 {
+		t.Error("expected both productions in results")
+	}
+}
+
+func TestProductionRepo_GetByCentroCostoID_Empty(t *testing.T) {
+	db := testDB(t)
+	repo := NewProductionRepo(db)
+	ctx := context.Background()
+
+	nonExistentCentroCostoID := int64(999999)
+	results, err := repo.GetByCentroCostoID(ctx, nonExistentCentroCostoID)
+	if err != nil {
+		t.Fatalf("GetByCentroCostoID: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestProductionRepo_UpdateArticuloAndCentro(t *testing.T) {
+	db := testDB(t)
+	repo := NewProductionRepo(db)
+	ctx := context.Background()
+
+	produccionID := randomID()
+	p := &domain.Production{
+		ProduccionID:  produccionID,
+		ArticuloID:    100,
+		CentroCostoID: 200,
+		NombreRancho:  "Rancho A",
+		Cultivo:       "Maiz",
+		Ciclo:         "2026-A",
+	}
+
+	if err := repo.Upsert(ctx, p); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	// Update articulo and centro
+	if err := repo.UpdateArticuloAndCentro(ctx, produccionID, 500, 600, "Rancho B"); err != nil {
+		t.Fatalf("UpdateArticuloAndCentro: %v", err)
+	}
+
+	// Verify update
+	got, err := repo.GetByProduccionID(ctx, produccionID)
+	if err != nil {
+		t.Fatalf("GetByProduccionID: %v", err)
+	}
+	if got.ArticuloID != 500 {
+		t.Errorf("expected updated articulo_id=500, got %d", got.ArticuloID)
+	}
+	if got.CentroCostoID != 600 {
+		t.Errorf("expected updated centro_costo_id=600, got %d", got.CentroCostoID)
+	}
+	if got.NombreRancho != "Rancho B" {
+		t.Errorf("expected updated nombre_rancho='Rancho B', got %q", got.NombreRancho)
+	}
+}

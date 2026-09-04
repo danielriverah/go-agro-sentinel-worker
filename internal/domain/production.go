@@ -25,8 +25,11 @@ func (b BBox) Validate() error {
 type Production struct {
 	ID                  int64
 	ProduccionID        int64
+	ArticuloID          int64 // FK a articulos - Identificador del artículo/producto agrícola
+	CentroCostoID       int64 // FK a centros_costos - Centro de costo para contabilidad
 	Cultivo             string
 	Ciclo               string
+	NombreRancho        string // Nombre desnormalizado del rancho para búsquedas rápidas
 	BBox                *BBox
 	Monitoring          bool
 	MonitoringMotivo    string
@@ -48,4 +51,23 @@ type Production struct {
 
 func (p *Production) ShouldProcess() bool {
 	return p.Monitoring && !p.Bloqueado && p.BBox != nil
+}
+
+// Validate verifies that the critical fields of Production are valid.
+func (p *Production) Validate() error {
+	if p.ProduccionID <= 0 {
+		return errors.New("Production: ProduccionID must be greater than 0")
+	}
+	if p.Cultivo == "" {
+		return errors.New("Production: Cultivo is required")
+	}
+	if p.Ciclo == "" {
+		return errors.New("Production: Ciclo is required")
+	}
+	if p.BBox != nil {
+		if err := p.BBox.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -44,8 +44,8 @@ func TestDynamoDBClient_ListActiveProducciones(t *testing.T) {
 	ctx := context.Background()
 
 	items := []DynamoProduction{
-		{ProduccionID: 1001, Activa: true, Cultivo: "maiz", Ciclo: "2026-A", FechaPlantacion: "2026-01-01", DiasProduccion: 90},
-		{ProduccionID: 1002, Activa: false, Cultivo: "soja", Ciclo: "2026-A", FechaPlantacion: "2026-01-15", DiasProduccion: 120},
+		{ProduccionID: 1001, Activa: true, Cultivo: "maiz", Ciclo: "2026-A", FechaPlantacion: "2026-01-01", DiasProduccion: 90, ArticuloID: 5001, CentroCostoID: 101, NombreRancho: "Rancho Norte"},
+		{ProduccionID: 1002, Activa: false, Cultivo: "soja", Ciclo: "2026-A", FechaPlantacion: "2026-01-15", DiasProduccion: 120, ArticuloID: 5002, CentroCostoID: 102, NombreRancho: "Rancho Sur"},
 	}
 
 	for _, item := range items {

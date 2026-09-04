@@ -202,6 +202,10 @@ func buildProduction(dp aws.DynamoProduction, existing *domain.Production) domai
 	prod.Cultivo = dp.Cultivo
 	prod.Ciclo = dp.Ciclo
 	prod.DiasProduccion = dp.DiasProduccion
+	// Phase 3: map denormalized fields from DynamoDB
+	prod.ArticuloID = dp.ArticuloID
+	prod.CentroCostoID = dp.CentroCostoID
+	prod.NombreRancho = dp.NombreRancho
 
 	if dp.FechaPlantacion != "" {
 		if t, err := time.Parse("2006-01-02", dp.FechaPlantacion); err == nil {

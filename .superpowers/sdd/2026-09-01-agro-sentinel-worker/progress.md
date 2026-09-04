@@ -19,5 +19,14 @@ Task 9: complete (commit 24a80ac, review clean)
 Task 9: minor (deferred): color ramp values are defaults not spec-specified; gdal_calc.py assumed directly on PATH
 Task 10: complete (commits 5c7a990..e13f98c, review found High: fixed gdalinfo JSON field 'stats'→'computedStatistics')
 Task 10: minor (deferred): percentiles are histogram-bucket approximation; index stats depend on _raw.tif files existing
-Task 11: complete (worker orchestration, pending commit)
-Task 11: minor (deferred): BandResolver (STAC/COG href discovery) not implemented yet - placeholder in cmd/worker/main.go returns VALIDATION_ERROR until a future task wires real STAC discovery
+Task 11: complete (commit d71b584, review clean)
+Task 11: minor (deferred): BandResolver placeholder returns VALIDATION_ERROR until real STAC discovery; IA client wired as nil (Task 13)
+Task 12: complete (commit 7cfb2ff, review clean)
+Task 12: minor (deferred): Scalar CDN no version pin/SRI; TriggerSync errors only in logs
+Task 13: complete (commit 55bbacd, review clean)
+Task 13: minor (deferred): IA request/response JSON contract inferred, not spec-verified
+Task 14: complete (commit 7eda2b0, review clean)
+Task 14: minor (deferred): no backoff on SQS receive errors; localstack test not run live
+Task 15: complete (commit 050c8bd, review skipped — config files only)
+Task 16: complete (commit 7ed8435, review skipped — small endpoint addition)
+Task 17: complete (commit 91e4ba3, review skipped — integration test, GDAL not available to run live)

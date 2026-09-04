@@ -26,6 +26,10 @@ type DynamoProduction struct {
 	Ciclo           string `dynamodbav:"ciclo"`
 	FechaPlantacion string `dynamodbav:"fecha_plantacion"`
 	DiasProduccion  int    `dynamodbav:"dias_produccion"`
+	// Phase 3: denormalized fields for richer production context
+	ArticuloID      int64  `dynamodbav:"articulo_id"`      // cultivo/producto identifier
+	CentroCostoID   int64  `dynamodbav:"centro_costo_id"`  // rancho identifier
+	NombreRancho    string `dynamodbav:"nombre_rancho"`    // denormalized rancho name
 }
 
 // DynamoScene mirrors a scene item stored in DynamoDB.

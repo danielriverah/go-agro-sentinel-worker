@@ -18,6 +18,7 @@ coverage.html
 # Config with secrets
 configs/config.yaml
 !configs/config.example.yaml
+.env
 
 # Temp
 /tmp/

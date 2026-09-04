@@ -1,66 +1,98 @@
+version: '2.1'
+
 services:
   api:
+    container_name: go-agro-sentinel-api
     build: .
     command: api
+    restart: always
     ports:
-      - "6000:6000"
+      - "8088:6000"
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
-      MYSQL_HOST: mysql
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devpass}
-      AWS_ENDPOINT_URL: http://localstack:4566
+      MYSQL_HOST: go-agro-sentinel-mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      AWS_ENDPOINT_URL: http://go-agro-sentinel-localstack:4566
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     depends_on:
       mysql:
         condition: service_healthy
+      localstack:
+        condition: service_started
 
   worker:
+    container_name: go-agro-sentinel-worker
     build: .
     command: worker
+    restart: always
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
-      MYSQL_HOST: mysql
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devpass}
-      AWS_ENDPOINT_URL: http://localstack:4566
+      MYSQL_HOST: go-agro-sentinel-mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      AWS_ENDPOINT_URL: http://go-agro-sentinel-localstack:4566
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      SQS_QUEUE_URL: http://go-agro-sentinel-localstack:4566/000000000000/agro-sentinel-jobs
     depends_on:
       mysql:
         condition: service_healthy
+      localstack:
+        condition: service_started
 
   sync:
+    container_name: go-agro-sentinel-sync
     build: .
     command: sync
+    restart: always
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
-      MYSQL_HOST: mysql
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devpass}
-      AWS_ENDPOINT_URL: http://localstack:4566
+      MYSQL_HOST: go-agro-sentinel-mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      AWS_ENDPOINT_URL: http://go-agro-sentinel-localstack:4566
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     depends_on:
       mysql:
         condition: service_healthy
+      localstack:
+        condition: service_started
 
   mysql:
-    image: mysql:8
+    container_name: go-agro-sentinel-mysql
+    image: mysql:8.0
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-devpass}
+      MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: agro
     ports:
-      - "3306:3306"
+      - "3309:3306"
+    volumes:
+      - go-agro-sentinel-mysql-data:/var/lib/mysql
+      - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/init-mysql.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
       retries: 10
 
   localstack:
-    image: localstack/localstack:latest
+    container_name: go-agro-sentinel-localstack
+    image: localstack/localstack:3.8
+    restart: always
     ports:
       - "4566:4566"
     environment:
       SERVICES: s3,sqs,dynamodb
+    volumes:
+      - go-agro-sentinel-localstack-data:/var/lib/localstack
+      - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init.sh
+
+volumes:
+  go-agro-sentinel-mysql-data:
+  go-agro-sentinel-localstack-data:

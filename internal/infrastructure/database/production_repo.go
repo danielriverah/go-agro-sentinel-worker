@@ -31,13 +31,16 @@ func (r *ProductionRepo) Upsert(ctx context.Context, p *domain.Production) error
 
 	const q = `
 INSERT INTO s3_monitoring_producciones (
-	produccion_id, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
+	produccion_id, articulo_id, centro_costo_id, nombre_rancho, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
 	monitoring, monitoring_motivo, bloqueado, bloqueado_motivo, bloqueado_at,
 	desbloqueado_por, target_resolution, cloud_cover_max, fecha_plantacion,
 	dias_produccion, fecha_fin_monitoreo, total_escenas, total_escenas_validas,
 	last_sync_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
+	articulo_id = VALUES(articulo_id),
+	centro_costo_id = VALUES(centro_costo_id),
+	nombre_rancho = VALUES(nombre_rancho),
 	cultivo = VALUES(cultivo),
 	ciclo = VALUES(ciclo),
 	bbox_minx = VALUES(bbox_minx),
@@ -67,7 +70,7 @@ ON DUPLICATE KEY UPDATE
 	}
 
 	_, err := r.db.ExecContext(ctx, q,
-		p.ProduccionID, p.Cultivo, p.Ciclo, minx, miny, maxx, maxy,
+		p.ProduccionID, p.ArticuloID, p.CentroCostoID, p.NombreRancho, p.Cultivo, p.Ciclo, minx, miny, maxx, maxy,
 		p.Monitoring, nullString(p.MonitoringMotivo), p.Bloqueado, nullString(p.BloqueadoMotivo), p.BloqueadoAt,
 		nullString(p.DesbloqueadoPor), p.TargetResolution, p.CloudCoverMax, p.FechaPlantacion,
 		p.DiasProduccion, p.FechaFinMonitoreo, p.TotalEscenas, p.TotalEscenasValidas,
@@ -83,7 +86,7 @@ ON DUPLICATE KEY UPDATE
 // GetByProduccionID fetches a production by its external produccion_id.
 func (r *ProductionRepo) GetByProduccionID(ctx context.Context, produccionID int64) (*domain.Production, error) {
 	const q = `
-SELECT id, produccion_id, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
+SELECT id, produccion_id, articulo_id, centro_costo_id, nombre_rancho, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
 	monitoring, monitoring_motivo, bloqueado, bloqueado_motivo, bloqueado_at,
 	desbloqueado_por, target_resolution, cloud_cover_max, fecha_plantacion,
 	dias_produccion, fecha_fin_monitoreo, total_escenas, total_escenas_validas,
@@ -107,7 +110,7 @@ WHERE produccion_id = ?
 // ListActive returns all productions with monitoring=1 and bloqueado=0.
 func (r *ProductionRepo) ListActive(ctx context.Context) ([]*domain.Production, error) {
 	const q = `
-SELECT id, produccion_id, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
+SELECT id, produccion_id, articulo_id, centro_costo_id, nombre_rancho, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
 	monitoring, monitoring_motivo, bloqueado, bloqueado_motivo, bloqueado_at,
 	desbloqueado_por, target_resolution, cloud_cover_max, fecha_plantacion,
 	dias_produccion, fecha_fin_monitoreo, total_escenas, total_escenas_validas,
@@ -216,6 +219,88 @@ WHERE produccion_id = ?
 	return nil
 }
 
+// GetByArticuloID fetches all productions for a given articulo_id.
+func (r *ProductionRepo) GetByArticuloID(ctx context.Context, articuloID int64) ([]*domain.Production, error) {
+	const q = `
+SELECT id, produccion_id, articulo_id, centro_costo_id, nombre_rancho, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
+	monitoring, monitoring_motivo, bloqueado, bloqueado_motivo, bloqueado_at,
+	desbloqueado_por, target_resolution, cloud_cover_max, fecha_plantacion,
+	dias_produccion, fecha_fin_monitoreo, total_escenas, total_escenas_validas,
+	last_sync_at, created_at, updated_at
+FROM s3_monitoring_producciones
+WHERE articulo_id = ?
+ORDER BY created_at DESC
+`
+
+	rows, err := r.db.QueryContext(ctx, q, articuloID)
+	if err != nil {
+		return nil, fmt.Errorf("listing productions by articulo_id: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*domain.Production
+	for rows.Next() {
+		p, err := scanProduction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning production row: %w", err)
+		}
+		results = append(results, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating production rows: %w", err)
+	}
+
+	return results, nil
+}
+
+// GetByCentroCostoID fetches all productions for a given centro_costo_id.
+func (r *ProductionRepo) GetByCentroCostoID(ctx context.Context, centroCostoID int64) ([]*domain.Production, error) {
+	const q = `
+SELECT id, produccion_id, articulo_id, centro_costo_id, nombre_rancho, cultivo, ciclo, bbox_minx, bbox_miny, bbox_maxx, bbox_maxy,
+	monitoring, monitoring_motivo, bloqueado, bloqueado_motivo, bloqueado_at,
+	desbloqueado_por, target_resolution, cloud_cover_max, fecha_plantacion,
+	dias_produccion, fecha_fin_monitoreo, total_escenas, total_escenas_validas,
+	last_sync_at, created_at, updated_at
+FROM s3_monitoring_producciones
+WHERE centro_costo_id = ?
+ORDER BY created_at DESC
+`
+
+	rows, err := r.db.QueryContext(ctx, q, centroCostoID)
+	if err != nil {
+		return nil, fmt.Errorf("listing productions by centro_costo_id: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*domain.Production
+	for rows.Next() {
+		p, err := scanProduction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning production row: %w", err)
+		}
+		results = append(results, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating production rows: %w", err)
+	}
+
+	return results, nil
+}
+
+// UpdateArticuloAndCentro updates articulo_id, centro_costo_id and nombre_rancho for a production.
+func (r *ProductionRepo) UpdateArticuloAndCentro(ctx context.Context, produccionID int64, articuloID int64, centroCostoID int64, nombreRancho string) error {
+	const q = `
+UPDATE s3_monitoring_producciones
+SET articulo_id = ?, centro_costo_id = ?, nombre_rancho = ?, updated_at = ?
+WHERE produccion_id = ?
+`
+	_, err := r.db.ExecContext(ctx, q, articuloID, centroCostoID, nombreRancho, time.Now().UTC(), produccionID)
+	if err != nil {
+		return fmt.Errorf("updating articulo and centro costo: %w", err)
+	}
+	return nil
+}
+
 // rowScanner abstracts *sql.Row / *sql.Rows for shared scan logic.
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -224,12 +309,13 @@ type rowScanner interface {
 func scanProduction(row rowScanner) (*domain.Production, error) {
 	var p domain.Production
 	var minx, miny, maxx, maxy sql.NullFloat64
-	var monitoringMotivo, bloqueadoMotivo, desbloqueadoPor sql.NullString
+	var monitoringMotivo, bloqueadoMotivo, desbloqueadoPor, nombreRancho sql.NullString
 	var bloqueadoAt, fechaPlantacion, fechaFinMonitoreo, lastSyncAt sql.NullTime
 	var diasProduccion sql.NullInt64
+	var articuloID, centroCostoID sql.NullInt64
 
 	err := row.Scan(
-		&p.ID, &p.ProduccionID, &p.Cultivo, &p.Ciclo, &minx, &miny, &maxx, &maxy,
+		&p.ID, &p.ProduccionID, &articuloID, &centroCostoID, &nombreRancho, &p.Cultivo, &p.Ciclo, &minx, &miny, &maxx, &maxy,
 		&p.Monitoring, &monitoringMotivo, &p.Bloqueado, &bloqueadoMotivo, &bloqueadoAt,
 		&desbloqueadoPor, &p.TargetResolution, &p.CloudCoverMax, &fechaPlantacion,
 		&diasProduccion, &fechaFinMonitoreo, &p.TotalEscenas, &p.TotalEscenasValidas,
@@ -242,6 +328,13 @@ func scanProduction(row rowScanner) (*domain.Production, error) {
 	if minx.Valid && miny.Valid && maxx.Valid && maxy.Valid {
 		p.BBox = &domain.BBox{MinX: minx.Float64, MinY: miny.Float64, MaxX: maxx.Float64, MaxY: maxy.Float64}
 	}
+	if articuloID.Valid {
+		p.ArticuloID = articuloID.Int64
+	}
+	if centroCostoID.Valid {
+		p.CentroCostoID = centroCostoID.Int64
+	}
+	p.NombreRancho = nombreRancho.String
 	p.MonitoringMotivo = monitoringMotivo.String
 	p.BloqueadoMotivo = bloqueadoMotivo.String
 	p.DesbloqueadoPor = desbloqueadoPor.String

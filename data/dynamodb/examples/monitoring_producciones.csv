@@ -1,0 +1,6 @@
+produccion_id,activa,cultivo,ciclo,fecha_plantacion,dias_produccion,articulo_id,centro_costo_id,nombre_rancho
+12345,true,maiz,2026-A,2026-01-15,120,5001,101,Rancho El Remanso
+12346,true,soja,2026-A,2026-01-20,140,5002,102,Finca La Esperanza
+12347,true,trigo,2026-B,2026-02-01,90,5003,101,Rancho El Remanso
+12348,false,algodon,2025-B,2025-08-15,150,5004,103,
+12349,true,maiz,2026-A,2026-01-25,120,5005,104,Campos del Amanecer

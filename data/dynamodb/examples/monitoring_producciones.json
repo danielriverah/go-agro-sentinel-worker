@@ -1,0 +1,56 @@
+[
+  {
+    "produccion_id": 12345,
+    "activa": true,
+    "cultivo": "maiz",
+    "ciclo": "2026-A",
+    "fecha_plantacion": "2026-01-15",
+    "dias_produccion": 120,
+    "articulo_id": 5001,
+    "centro_costo_id": 101,
+    "nombre_rancho": "Rancho El Remanso"
+  },
+  {
+    "produccion_id": 12346,
+    "activa": true,
+    "cultivo": "soja",
+    "ciclo": "2026-A",
+    "fecha_plantacion": "2026-01-20",
+    "dias_produccion": 140,
+    "articulo_id": 5002,
+    "centro_costo_id": 102,
+    "nombre_rancho": "Finca La Esperanza"
+  },
+  {
+    "produccion_id": 12347,
+    "activa": true,
+    "cultivo": "trigo",
+    "ciclo": "2026-B",
+    "fecha_plantacion": "2026-02-01",
+    "dias_produccion": 90,
+    "articulo_id": 5003,
+    "centro_costo_id": 101,
+    "nombre_rancho": "Rancho El Remanso"
+  },
+  {
+    "produccion_id": 12348,
+    "activa": false,
+    "cultivo": "algodon",
+    "ciclo": "2025-B",
+    "fecha_plantacion": "2025-08-15",
+    "dias_produccion": 150,
+    "articulo_id": 5004,
+    "centro_costo_id": 103
+  },
+  {
+    "produccion_id": 12349,
+    "activa": true,
+    "cultivo": "maiz",
+    "ciclo": "2026-A",
+    "fecha_plantacion": "2026-01-25",
+    "dias_produccion": 120,
+    "articulo_id": 5005,
+    "centro_costo_id": 104,
+    "nombre_rancho": "Campos del Amanecer"
+  }
+]

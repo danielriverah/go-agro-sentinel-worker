@@ -69,12 +69,13 @@
 ## Matriz de Decisión Rápida
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │ SITUACIÓN                      │ DOCUMENTO           │ ACCIÓN    │
-├─────────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────────┤
 │ Planificar deployment          │ DEPLOYMENT_PLAN     │ Leer 1.0  │
 │ Pre-deployment checklist       │ DEPLOYMENT_PLAN     │ §1        │
 │ Ejecutar deployment real       │ DEPLOYMENT_RUNBOOK  │ §Proced.  │
+│ Ejecutar tests                 │ TESTS_FASE3         │ §Ejecución│
 │ API no responde                │ OPERATIONS_GUIDE    │ §Runbook  │
 │ MySQL lento                    │ OPERATIONS_GUIDE    │ §Tuning   │
 │ Problema de espacio            │ OPERATIONS_GUIDE    │ §Runbook  │
@@ -82,7 +83,8 @@
 │ Configurar monitoreo           │ OPERATIONS_GUIDE    │ §2        │
 │ Backup/Recovery                │ OPERATIONS_GUIDE    │ §3        │
 │ Escalación de issue            │ OPERATIONS_GUIDE    │ §5        │
-└─────────────────────────────────────────────────────────────────┘
+│ DynamoDB structure             │ DYNAMODB_STRUCTURE  │ §1-4      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -215,6 +217,87 @@ go-agro-sentinel-worker/
 
 # Rollback completo
 ./scripts/rollback.sh
+```
+
+---
+
+## Testing - Fase 3
+
+**Documentación Completa:** Ver `docs/TESTS_FASE3.md`
+
+### Test Script Principal
+
+```bash
+./scripts/run_tests.sh [opción]
+```
+
+### Opciones de Testing
+
+| Opción | Descripción | Comando |
+|--------|-------------|---------|
+| `domain` | Tests de structs y validación | `./scripts/run_tests.sh domain` |
+| `production` | Tests ProductionRepo | `./scripts/run_tests.sh production` |
+| `ia-result` | Tests IAResultRepository | `./scripts/run_tests.sh ia-result` |
+| `integration` | Tests de integración completos | `./scripts/run_tests.sh integration` |
+| `database` | Todos los tests de base de datos | `./scripts/run_tests.sh database` |
+| `coverage` | Tests con reporte de cobertura | `./scripts/run_tests.sh coverage` |
+| `race` | Tests con race detector | `./scripts/run_tests.sh race` |
+| `all` | Todos los tests (default) | `./scripts/run_tests.sh all` |
+
+### Quick Start Testing
+
+```bash
+# Ejecutar todos los tests
+./scripts/run_tests.sh
+
+# Con cobertura
+./scripts/run_tests.sh coverage
+
+# Detectar race conditions
+./scripts/run_tests.sh race
+
+# Solo tests de integración
+./scripts/run_tests.sh integration
+```
+
+### Requisitos para Testing
+
+```bash
+# Variable de entorno requerida
+export MYSQL_TEST_DSN="root:password@tcp(localhost:3306)/sentinel_test?parseTime=true"
+
+# En PowerShell (Windows)
+$env:MYSQL_TEST_DSN = "root:password@tcp(localhost:3306)/sentinel_test?parseTime=true"
+```
+
+### Contenido de Tests (Fase 3)
+
+**ProductionRepo Tests**
+- Crear y recuperar producciones
+- Verificar upsert (no duplicados)
+- Bloqueo/desbloqueo de producciones
+- Listar producciones activas
+- Incrementar contadores de escenas
+- Buscar por ArticuloID, CentroCostoID
+- Campos denormalizados: ArticuloID, CentroCostoID, NombreRancho
+
+**IAResultRepository Tests**
+- Crear y recuperar resultados IA
+- Actualizar resultados
+- Listar por producción
+- Eliminar resultados
+
+**Integration Tests**
+- Ciclo completo de sincronización
+- Procesamiento de escenas y análisis IA
+- Flujo completo de monitoreo
+- Validación de datos
+
+### Coverage Report
+
+Después de ejecutar `./scripts/run_tests.sh coverage`, abrir:
+```
+./coverage.html
 ```
 
 ---
@@ -368,6 +451,10 @@ Level 3: Management (1 hour)
 | Disk space | RUNBOOK | Troubleshooting #4 |
 | API lenta | OPERATIONS | Performance Tuning |
 | MySQL lento | OPERATIONS | MySQL Optimization |
+| Tests fallan | TESTS_FASE3 | §Ejecución |
+| MYSQL_TEST_DSN not set | TESTS_FASE3 | §Requisitos |
+| ArticuloID/CentroCostoID nil | DYNAMODB_STRUCTURE | §4.2 |
+| Sincronización no ejecuta | DYNAMODB_STRUCTURE | §8 |
 
 ---
 

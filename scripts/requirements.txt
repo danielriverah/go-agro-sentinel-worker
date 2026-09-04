@@ -1,0 +1,9 @@
+# DynamoDB Import Tool - Dependencias Python
+# Instalar con: pip install -r scripts/requirements.txt
+
+# AWS SDK para Python
+boto3>=1.26.0
+
+# Para desarrollo y testing (opcional)
+pytest>=7.0.0
+pytest-cov>=4.0.0

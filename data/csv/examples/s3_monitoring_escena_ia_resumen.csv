@@ -1,0 +1,4 @@
+s3_monitoring_escena_id,estado_clave,estado_general,riesgo_nivel,riesgo_motivo,fecha_analisis,json_original
+1001,normal,OK,bajo,Sin anomalías detectadas,2026-06-03 10:30:00,"{""status"": ""normal"", ""score"": 0.95}"
+1002,alerta,ALERTA,medio,Posible enfermedad fúngica detectada,2026-06-10 14:15:00,"{""status"": ""alerta"", ""score"": 0.65, ""disease"": ""powdery_mildew""}"
+1003,crítico,CRÍTICO,alto,Alto estrés hídrico detectado,2026-06-15 09:45:00,"{""status"": ""critico"", ""score"": 0.35, ""issue"": ""water_stress""}"

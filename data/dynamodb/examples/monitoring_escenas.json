@@ -1,0 +1,150 @@
+[
+  {
+    "scene_id": "S2A_MSIL2A_20260205T135051_N0510_R024_T19HCC_20260205T135101",
+    "produccion_id": 12345,
+    "date": "2026-02-05",
+    "cloud_cover": 12.5,
+    "stac_assets": {
+      "B02": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/5/0/B02.jp2",
+        "resolution": 10
+      },
+      "B03": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/5/0/B03.jp2",
+        "resolution": 10
+      },
+      "B04": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/5/0/B04.jp2",
+        "resolution": 10
+      },
+      "B08": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/5/0/B08.jp2",
+        "resolution": 10
+      },
+      "B11": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/5/0/B11.jp2",
+        "resolution": 20
+      }
+    }
+  },
+  {
+    "scene_id": "S2B_MSIL2A_20260210T135019_N0510_R024_T19HCC_20260210T135019",
+    "produccion_id": 12345,
+    "date": "2026-02-10",
+    "cloud_cover": 8.3,
+    "stac_assets": {
+      "B02": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/10/0/B02.jp2",
+        "resolution": 10
+      },
+      "B03": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/10/0/B03.jp2",
+        "resolution": 10
+      },
+      "B04": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/10/0/B04.jp2",
+        "resolution": 10
+      },
+      "B08": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/10/0/B08.jp2",
+        "resolution": 10
+      },
+      "B11": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/10/0/B11.jp2",
+        "resolution": 20
+      },
+      "B05": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/10/0/B05.jp2",
+        "resolution": 20
+      }
+    }
+  },
+  {
+    "scene_id": "S2A_MSIL2A_20260215T135051_N0510_R024_T19HCC_20260215T135101",
+    "produccion_id": 12346,
+    "date": "2026-02-15",
+    "cloud_cover": 5.2,
+    "stac_assets": {
+      "B02": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/15/0/B02.jp2",
+        "resolution": 10
+      },
+      "B03": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/15/0/B03.jp2",
+        "resolution": 10
+      },
+      "B04": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/15/0/B04.jp2",
+        "resolution": 10
+      },
+      "B08": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/15/0/B08.jp2",
+        "resolution": 10
+      }
+    }
+  },
+  {
+    "scene_id": "S2B_MSIL2A_20260220T135019_N0510_R024_T19HCC_20260220T135019",
+    "produccion_id": 12347,
+    "date": "2026-02-20",
+    "cloud_cover": 0.0,
+    "stac_assets": {
+      "B02": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B02.jp2",
+        "resolution": 10
+      },
+      "B03": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B03.jp2",
+        "resolution": 10
+      },
+      "B04": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B04.jp2",
+        "resolution": 10
+      },
+      "B08": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B08.jp2",
+        "resolution": 10
+      },
+      "B11": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B11.jp2",
+        "resolution": 20
+      },
+      "B05": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B05.jp2",
+        "resolution": 20
+      },
+      "B06": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B06.jp2",
+        "resolution": 20
+      },
+      "B07": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/20/0/B07.jp2",
+        "resolution": 20
+      }
+    }
+  },
+  {
+    "scene_id": "S2A_MSIL2A_20260225T135051_N0510_R024_T19HCC_20260225T135101",
+    "produccion_id": 12349,
+    "date": "2026-02-25",
+    "cloud_cover": 15.7,
+    "stac_assets": {
+      "B02": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/25/0/B02.jp2",
+        "resolution": 10
+      },
+      "B03": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/25/0/B03.jp2",
+        "resolution": 10
+      },
+      "B04": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/25/0/B04.jp2",
+        "resolution": 10
+      },
+      "B08": {
+        "href": "https://sentinel-2-l2a.s3.amazonaws.com/tiles/19/H/CC/2026/2/25/0/B08.jp2",
+        "resolution": 10
+      }
+    }
+  }
+]

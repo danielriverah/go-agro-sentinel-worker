@@ -343,13 +343,40 @@ input := &dynamodb.ScanInput{
 | `ciclo` | `ciclo` | Directo | Informativo |
 | `fecha_plantacion` | `fecha_plantacion` | String → DATE | Cálculos de fin monitoreo |
 | `dias_produccion` | `dias_produccion` | Directo | Para cálculos |
-| `articulo_id` | `articulo_id` | Directo | Desnormalizado desde Phase 3 |
-| `centro_costo_id` | `centro_costo_id` | Directo | Desnormalizado desde Phase 3 |
-| `nombre_rancho` | `nombre_rancho` | Directo | Desnormalizado desde Phase 3 |
+| **Phase 3 Denormalization** | | | |
+| `articulo_id` | `articulo_id` | Directo | **Identificador de producto agrícola** |
+| `centro_costo_id` | `centro_costo_id` | Directo | **Identificador de centro de costos** |
+| `nombre_rancho` | `nombre_rancho` | Directo | **Nombre denormalizado para búsquedas** |
 | — | `monitoring_motivo` | Calculado | Ver sección 4.3 |
 | — | `bloqueado` | Inicial: false | Administrador puede cambiar |
 | — | `target_resolution` | Default: 10 | Configurable por usuario |
 | — | `cloud_cover_max` | Default: 23.00 | Configurable por usuario |
+
+#### Phase 3 Denormalization Fields (Nuevos)
+
+Los siguientes campos se agregaron en Phase 3 para optimizar consultas y búsquedas sin joins:
+
+**ArticuloID** (`articulo_id`)
+- **Tipo**: Number (FK a tabla `articulos`)
+- **Propósito**: Identificar el producto agrícola siendo monitoreado
+- **Ejemplo**: `5001` (Maíz variedad A), `5002` (Soja)
+- **Uso**: Filtrar producciones por artículo en reportes y análisis
+- **Sincronización**: Se replica desde DynamoDB en cada ciclo de sincronización
+
+**CentroCostoID** (`centro_costo_id`)
+- **Tipo**: Number (FK a tabla `centros_costos`)
+- **Propósito**: Asignar costos y gastos de monitoreo al centro responsable
+- **Ejemplo**: `101` (Centro Operativo A), `102` (Centro Operativo B)
+- **Uso**: Reportes contables, análisis de costos por centro
+- **Sincronización**: Se replica desde DynamoDB en cada ciclo de sincronización
+
+**NombreRancho** (`nombre_rancho`)
+- **Tipo**: String (denormalizado)
+- **Propósito**: Buscar y filtrar producciones por nombre del rancho sin joins
+- **Ejemplo**: `"Rancho El Remanso"`, `"Finca La Esperanza"`
+- **Uso**: Búsquedas rápidas en UI, filtros en reportes
+- **Sincronización**: Se replica desde DynamoDB en cada ciclo de sincronización
+- **Nullable**: Sí (puede omitirse si no está disponible en origen)
 
 #### De `monitoring_escenas` (DynamoDB) → `s3_monitoring_escenas` (MySQL)
 

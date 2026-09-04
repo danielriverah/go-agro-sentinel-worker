@@ -4,6 +4,85 @@ Referencia de todos los scripts disponibles para deployment y operación del Sis
 
 ## Índice de Scripts
 
+### Data Import Scripts
+
+#### 0. import-dynamodb.sh & import-dynamodb.py
+**Propósito:** Importar datos a DynamoDB desde JSON o CSV
+
+```bash
+# Validar datos (recomendado primero)
+./scripts/import-dynamodb.sh \
+  --table monitoring_producciones \
+  --file data/dynamodb/examples/monitoring_producciones.json \
+  --dry-run
+
+# Importar a AWS real
+./scripts/import-dynamodb.sh \
+  --table monitoring_producciones \
+  --file data/dynamodb/examples/monitoring_producciones.json
+
+# Importar a LocalStack (desarrollo)
+./scripts/import-dynamodb.sh \
+  --table monitoring_escenas \
+  --file data/dynamodb/examples/monitoring_escenas.json \
+  --endpoint-url http://localhost:4566
+```
+
+**Componentes:**
+- `scripts/import-dynamodb.sh` - Script wrapper (bash)
+- `scripts/import-dynamodb.py` - Script principal (Python)
+- `scripts/test-import-dynamodb.py` - Tests unitarios
+- `scripts/requirements.txt` - Dependencias Python (boto3)
+
+**Tablas Soportadas:**
+- `monitoring_producciones` - Producciones agrícolas
+- `monitoring_escenas` - Escenas de satélite Sentinel-2
+
+**Características:**
+- Importa desde JSON o CSV
+- Validación automática de esquema
+- Modo dry-run (validar sin cambiar datos)
+- Importa a AWS DynamoDB o LocalStack
+- Manejo de errores robusto
+- Conversión automática de tipos
+
+**Documentación Completa:**
+- `docs/DYNAMODB_IMPORT_GUIDE.md` - Guía detallada
+- `docs/DYNAMODB_IMPORT_QUICKSTART.md` - Quick start (5 min)
+- `data/dynamodb/examples/README.md` - Descripción de ejemplos
+
+**Requisitos:**
+- Python 3.7+
+- boto3 (`pip install -r scripts/requirements.txt`)
+- Credenciales AWS configuradas (si usa AWS real)
+
+**Instalación Rápida:**
+```bash
+# Instalar dependencias
+pip install -r scripts/requirements.txt
+
+# Hacer script ejecutable (Linux/Mac)
+chmod +x scripts/import-dynamodb.sh
+
+# Ver ayuda
+./scripts/import-dynamodb.sh --help
+python3 scripts/import-dynamodb.py --help
+```
+
+**Testing:**
+```bash
+# Ejecutar test suite
+python3 scripts/test-import-dynamodb.py
+
+# Output esperado
+# Test 1: Cargar datos desde JSON... ✓
+# Test 2: Cargar datos desde CSV... ✓
+# ...
+# Resultados: 13 pasados, 0 fallidos
+```
+
+---
+
 ### Pre-Deployment Scripts
 
 #### 1. pre-deploy-check.sh

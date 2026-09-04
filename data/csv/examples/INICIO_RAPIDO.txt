@@ -1,0 +1,354 @@
+================================================================================
+SISTEMA AGRO SENTINEL - IMPORTACIÓN CSV - INICIO RÁPIDO
+================================================================================
+
+UBICACIÓN: C:\xampp\htdocs\WEB\clientes\DRH\go-agro-sentinel-worker\data\csv\examples
+
+================================================================================
+DESCRIPCIÓN RÁPIDA
+================================================================================
+
+Este directorio contiene 6 archivos CSV de ejemplo listos para importar a la
+base de datos del Sistema Agro Sentinel. Incluye datos de prueba para:
+
+  • Artículos (cultivos)
+  • Centros de costo (ranchos)
+  • Producciones
+  • Zonas de producción
+  • Asignaciones de zonas
+  • Monitoreo de escenas IA
+
+================================================================================
+INICIO RÁPIDO (3 PASOS)
+================================================================================
+
+OPCIÓN 1: Script Bash (Linux/Mac)
+----------------------------------
+1. Ir al proyecto:
+   cd /xampp/htdocs/WEB/clientes/DRH/go-agro-sentinel-worker
+
+2. Ejecutar importación:
+   chmod +x scripts/import-csv.sh
+   ./scripts/import-csv.sh import-all
+
+3. Verificar:
+   mysql -h localhost -u admin -padmin agro -e "SELECT COUNT(*) FROM articulos;"
+
+
+OPCIÓN 2: PowerShell (Windows)
+-------------------------------
+1. Abrir PowerShell
+
+2. Navegar al proyecto:
+   cd C:\xampp\htdocs\WEB\clientes\DRH\go-agro-sentinel-worker
+
+3. Ejecutar importación:
+   .\scripts\import-csv.ps1 -Comando ImportAll
+
+4. Verificar:
+   mysql -h localhost -u admin -padmin agro -e "SELECT COUNT(*) FROM articulos;"
+
+
+OPCIÓN 3: SQL Directo (MySQL)
+------------------------------
+1. Abrir MySQL Workbench o línea de comandos
+
+2. Ejecutar:
+   mysql -h localhost -u admin -padmin agro < scripts/import-from-csv.sql
+
+3. Los datos se importarán automáticamente con validaciones
+
+================================================================================
+ARCHIVOS INCLUIDOS
+================================================================================
+
+ARCHIVOS CSV (6 archivos):
+  ✓ articulos.csv                           (10 registros)
+  ✓ centros_costos.csv                      (5 registros)
+  ✓ producciones.csv                        (5 registros)
+  ✓ zonas_producciones.csv                  (5 registros)
+  ✓ asignaciones_zonas_producciones.csv     (5 registros)
+  ✓ s3_monitoring_escena_ia_resumen.csv     (3 registros)
+
+  Total: 33 registros de ejemplo
+
+
+SCRIPTS DE IMPORTACIÓN (3 archivos):
+  ✓ scripts/import-from-csv.sql    - Script SQL completo
+  ✓ scripts/import-csv.sh          - Script Bash (Linux/Mac)
+  ✓ scripts/import-csv.ps1         - Script PowerShell (Windows)
+
+
+DOCUMENTACIÓN (4 archivos):
+  ✓ docs/CSV_IMPORT_GUIDE.md       - Guía completa (8000+ líneas)
+  ✓ docs/CSV_QUICK_REFERENCE.md    - Referencia rápida para desarrolladores
+  ✓ docs/CSV_IMPORT_INDEX.md       - Índice de todos los recursos
+  ✓ README.md                      - Información de este directorio
+
+================================================================================
+REQUISITOS PREVIOS
+================================================================================
+
+✓ MySQL Server 5.7+ instalado y corriendo
+✓ Base de datos "agro" creada
+✓ Tablas creadas con: scripts/phase1-create-tables.sql
+✓ Usuario MySQL: admin / admin
+✓ Acceso a línea de comandos (Bash o PowerShell)
+
+Verificar MySQL:
+  mysql -h localhost -u admin -padmin agro -e "SELECT 1;"
+
+================================================================================
+VALIDACIONES
+================================================================================
+
+Después de importar, verificar que los datos están correctos:
+
+OPCIÓN 1: Con script Bash
+  ./scripts/import-csv.sh list-tables
+
+OPCIÓN 2: Con MySQL
+  mysql -h localhost -u admin -padmin agro << EOF
+  SELECT 'articulos' as tabla, COUNT(*) FROM articulos
+  UNION ALL SELECT 'centros_costos', COUNT(*) FROM centros_costos
+  UNION ALL SELECT 'producciones', COUNT(*) FROM producciones
+  UNION ALL SELECT 'zonas_producciones', COUNT(*) FROM zonas_producciones
+  UNION ALL SELECT 'asignaciones_zonas_producciones', COUNT(*) FROM asignaciones_zonas_producciones
+  UNION ALL SELECT 's3_monitoring_escena_ia_resumen', COUNT(*) FROM s3_monitoring_escena_ia_resumen;
+  EOF
+
+Resultado esperado: Cada tabla debe mostrar el número correcto de registros
+
+================================================================================
+PERSONALIZAR IMPORTACIONES
+================================================================================
+
+Para crear tus propios archivos CSV:
+
+1. Copiar archivo de ejemplo:
+   cp articulos.csv mis_articulos.csv
+
+2. Editar con tu editor favorito (Excel, Google Sheets, VS Code, etc.)
+
+3. Guardar como CSV (UTF-8)
+
+4. Importar:
+   ./scripts/import-csv.sh import articulos data/csv/custom/mis_articulos.csv
+
+O: .\scripts\import-csv.ps1 -Comando Import -Tabla articulos -Archivo mi_archivo.csv
+
+================================================================================
+ESTRUCTURA DE CAMPOS
+================================================================================
+
+ARTICULOS
+---------
+articulo_id (INT)      - ID único del artículo
+nombre (VARCHAR)       - Nombre del cultivo (requerido)
+variedad (VARCHAR)     - Variedad específica (opcional)
+
+Ejemplo:
+1,Lechuga,Latina
+
+
+CENTROS_COSTOS
+---------------
+centro_costo_id (INT)  - ID único del rancho
+nombre (VARCHAR)       - Nombre del rancho (requerido)
+
+Ejemplo:
+1,Rancho Los Andes
+
+
+PRODUCCIONES
+------------
+folio (VARCHAR)        - ID único de producción
+articulo_id (INT)      - ID del artículo
+fecha (DATE)           - Fecha inicio (YYYY-MM-DD)
+hora (TIME)            - Hora inicio (HH:MM:SS)
+fecha_cierre (DATE)    - Fecha cierre (opcional)
+hora_cierre (TIME)     - Hora cierre (opcional)
+usuario (VARCHAR)      - Usuario que registró
+estatus (CHAR)         - N=Normal, T=Terminada, C=Cancelada
+aplicado (CHAR)        - S=Sí, N=No
+cantidad (DECIMAL)     - Área en hectáreas
+centro_costo_id (INT)  - ID del rancho
+monitoring (TINYINT)   - 0=No, 1=Sí
+
+Ejemplo:
+CSJ2601-17-A,1,2026-06-03,08:30:00,,,"admin",N,S,2.50,1,1
+
+
+ZONAS_PRODUCCIONES
+------------------
+zona_produccion_id (INT)  - ID única de zona
+nombre (VARCHAR)          - Nombre completo
+nombre_corto (VARCHAR)    - Abreviatura (ej: ZNA)
+estatus (CHAR)            - P=Producción, I=Inactiva
+area (DECIMAL)            - Área en hectáreas
+centro_costo_id (INT)     - ID del rancho
+poligono (TEXT)           - Coordenadas GeoJSON
+
+Ejemplo:
+1,Zona Norte Los Andes,ZNA,P,5.50,1,"[[21.10535, -100.93089], [21.10535, -100.92730]]"
+
+
+ASIGNACIONES_ZONAS_PRODUCCIONES
+--------------------------------
+asignacion_zona_prod_id (INT)  - ID única de asignación
+produccion_id (INT)            - ID de producción
+zona_produccion_id (INT)       - ID de zona
+tipo_asignacion (CHAR)         - T=Total, P=Parcial
+area (DECIMAL)                 - Área asignada
+poligono (TEXT)                - Coordenadas GeoJSON
+
+Ejemplo:
+1,1,1,P,2.50,"[[21.10535, -100.93089], [21.10535, -100.92730]]"
+
+
+S3_MONITORING_ESCENA_IA_RESUMEN
+--------------------------------
+s3_monitoring_escena_id (BIGINT)  - ID de escena
+estado_clave (VARCHAR)            - normal, alerta, crítico
+estado_general (VARCHAR)          - Estado general
+riesgo_nivel (VARCHAR)            - bajo, medio, alto
+riesgo_motivo (TEXT)              - Descripción del riesgo
+fecha_analisis (DATETIME)         - Fecha del análisis
+json_original (LONGTEXT)          - JSON de respuesta IA
+
+Ejemplo:
+1001,normal,OK,bajo,Sin anomalías,2026-06-03 10:30:00,"{""status"": ""normal""}"
+
+================================================================================
+DOCUMENTACIÓN COMPLETA
+================================================================================
+
+Para información más detallada, consultar:
+
+  1. CSV_IMPORT_GUIDE.md
+     - Guía exhaustiva con ejemplos paso a paso
+     - Troubleshooting completo
+     - Mejores prácticas
+
+  2. CSV_QUICK_REFERENCE.md
+     - Referencia rápida para desarrolladores
+     - Comandos más comunes
+     - Validaciones y errores
+
+  3. CSV_IMPORT_INDEX.md
+     - Índice de todos los recursos
+     - Matriz de compatibilidad
+     - Checklist de implementación
+
+  4. README.md (en este directorio)
+     - Descripción detallada de cada CSV
+     - Cómo usar los archivos
+     - Crear archivos personalizados
+
+================================================================================
+ERRORES COMUNES Y SOLUCIONES
+================================================================================
+
+ERROR: "Can't find file"
+SOLUCIÓN: Usar ruta absoluta en lugar de relativa
+
+ERROR: "Access denied; you need FILE privilege"
+SOLUCIÓN: Ejecutar en MySQL:
+         GRANT FILE ON *.* TO 'admin'@'localhost';
+         FLUSH PRIVILEGES;
+
+ERROR: "Loading local data is disabled"
+SOLUCIÓN: Ejecutar en MySQL:
+         SET GLOBAL local_infile = 1;
+
+ERROR: "Duplicate entry"
+SOLUCIÓN: Limpiar tabla antes:
+         DELETE FROM tabla;
+         ALTER TABLE tabla AUTO_INCREMENT = 1;
+
+ERROR: "Foreign key constraint fails"
+SOLUCIÓN: Importar en orden correcto:
+         1. articulos
+         2. centros_costos
+         3. zonas_producciones
+         4. producciones
+         5. asignaciones_zonas_producciones
+         6. s3_monitoring_escena_ia_resumen
+
+ERROR: "Incorrect date value"
+SOLUCIÓN: Usar formato YYYY-MM-DD (ej: 2026-06-03, no 03/06/2026)
+
+================================================================================
+VARIABLES DE ENTORNO
+================================================================================
+
+Configurable para conexiones diferentes:
+
+  DB_HOST=localhost          (default: localhost)
+  DB_USER=admin              (default: admin)
+  DB_PASS=admin              (default: admin)
+  DB_NAME=agro               (default: agro)
+  DB_PORT=3306               (default: 3306)
+
+Ejemplo:
+  export DB_HOST=192.168.1.100
+  export DB_USER=agro_admin
+  export DB_PASS=secure_pass
+  ./scripts/import-csv.sh import-all
+
+================================================================================
+COMANDOS ÚTILES
+================================================================================
+
+BASH SCRIPTS:
+  ./scripts/import-csv.sh help                  - Mostrar ayuda
+  ./scripts/import-csv.sh import-all            - Importar todo
+  ./scripts/import-csv.sh validate <archivo>   - Validar CSV
+  ./scripts/import-csv.sh list-tables           - Listar tablas
+  ./scripts/import-csv.sh backup                - Crear backup
+
+POWERSHELL SCRIPTS:
+  .\scripts\import-csv.ps1 -Comando Help
+  .\scripts\import-csv.ps1 -Comando ImportAll
+  .\scripts\import-csv.ps1 -Comando Validate -Archivo archivo.csv
+  .\scripts\import-csv.ps1 -Comando ListTables
+  .\scripts\import-csv.ps1 -Comando Backup
+
+MYSQL QUERIES:
+  SELECT COUNT(*) FROM articulos;
+  SELECT * FROM articulos LIMIT 5;
+  SELECT TABLE_NAME, TABLE_ROWS FROM INFORMATION_SCHEMA.TABLES
+  WHERE TABLE_SCHEMA='agro';
+
+================================================================================
+CONTACTO Y SOPORTE
+================================================================================
+
+Documentación: /docs/CSV_IMPORT_GUIDE.md
+Referencia Rápida: /docs/CSV_QUICK_REFERENCE.md
+Ejemplos: /data/csv/examples/
+Scripts: /scripts/import-*.sh, /scripts/import-*.ps1
+
+Para problemas específicos:
+  1. Consultar "Errores comunes" arriba
+  2. Revisar CSV_IMPORT_GUIDE.md sección Troubleshooting
+  3. Ejecutar: ./scripts/import-csv.sh validate <archivo>
+  4. Ver logs: cat import.log
+
+================================================================================
+INFORMACIÓN ADICIONAL
+================================================================================
+
+Versión: 1.0
+Fecha: 2026-09-04
+Estado: Listo para producción
+
+Total de archivos creados:
+  - 6 archivos CSV de ejemplo (33 registros)
+  - 3 scripts de importación
+  - 3 documentos completos
+  - 2 archivos de configuración
+
+Todo está listo para empezar a usar. ¡Bienvenido al Sistema Agro Sentinel!
+
+================================================================================

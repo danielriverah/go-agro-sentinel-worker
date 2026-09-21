@@ -3,25 +3,33 @@ package database
 import (
 	"context"
 	"testing"
-	"time"
 
 	"agro-sentinel-worker/internal/domain"
 )
 
-func setupScene(t *testing.T, ctx context.Context, prodRepo *ProductionRepo, sceneRepo *SceneRepo) int64 {
+func setupScene(t *testing.T, ctx context.Context, prodRepo *ProductionRepo, sceneRepo *SceneRepo) uint64 {
 	t.Helper()
 	produccionID := setupProduction(t, ctx, prodRepo)
+
+	// We need the s3_monitoring_produccion_id, so upsert and reload.
 	s := &domain.Scene{
-		ProduccionID: produccionID,
-		SceneID:      "S2A_FILE_TEST",
-		SceneDate:    time.Now().UTC(),
-		Status:       domain.StatusPending,
+		SceneName: "S2A_FILE_TEST",
+		Status:    domain.StatusPending,
 	}
+
+	// Upsert requires MonitoringProduccionID — get it from the upserted production.
+	prod, err := prodRepo.GetByProduccionID(ctx, produccionID)
+	if err != nil || prod == nil {
+		t.Fatalf("fetching production for scene setup: %v", err)
+	}
+	s.MonitoringProduccionID = prod.ID
+
 	if err := sceneRepo.Upsert(ctx, s); err != nil {
 		t.Fatalf("setting up scene: %v", err)
 	}
-	got, err := sceneRepo.GetByProduccionAndSceneID(ctx, produccionID, s.SceneID)
-	if err != nil {
+
+	got, err := sceneRepo.GetByProduccionAndSceneName(ctx, produccionID, s.SceneName)
+	if err != nil || got == nil {
 		t.Fatalf("fetching scene: %v", err)
 	}
 	return got.ID
@@ -37,15 +45,12 @@ func TestFileRepo_CreateAndList(t *testing.T) {
 	escenaID := setupScene(t, ctx, prodRepo, sceneRepo)
 
 	f := &domain.SceneFile{
-		EscenaID:      escenaID,
-		FileType:      domain.FileMultiband,
-		FileName:      "multiband.tif",
-		S3Key:         "path/to/multiband.tif",
-		S3Bucket:      "test-bucket",
-		FileSizeBytes: 12345,
-		ResolutionM:   10,
-		WidthPx:       1024,
-		HeightPx:      1024,
+		EscenaID:  escenaID,
+		Tipo:      "multiband",
+		S3Key:     "path/to/multiband.tif",
+		S3Uri:     "s3://test-bucket/path/to/multiband.tif",
+		SizeBytes: 12345,
+		Existe:    true,
 	}
 
 	if err := repo.Create(ctx, f); err != nil {
@@ -62,12 +67,12 @@ func TestFileRepo_CreateAndList(t *testing.T) {
 	if len(list) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(list))
 	}
-	if list[0].FileName != "multiband.tif" {
-		t.Errorf("unexpected file name: %s", list[0].FileName)
+	if list[0].Tipo != "multiband" {
+		t.Errorf("unexpected tipo: %s", list[0].Tipo)
 	}
 }
 
-func TestFileRepo_GetByType(t *testing.T) {
+func TestFileRepo_GetByTipo(t *testing.T) {
 	db := testDB(t)
 	prodRepo := NewProductionRepo(db)
 	sceneRepo := NewSceneRepo(db)
@@ -76,8 +81,8 @@ func TestFileRepo_GetByType(t *testing.T) {
 
 	escenaID := setupScene(t, ctx, prodRepo, sceneRepo)
 
-	multiband := &domain.SceneFile{EscenaID: escenaID, FileType: domain.FileMultiband, FileName: "m.tif", S3Key: "k1", S3Bucket: "b"}
-	ndvi := &domain.SceneFile{EscenaID: escenaID, FileType: domain.FileNDVI, FileName: "ndvi.png", S3Key: "k2", S3Bucket: "b"}
+	multiband := &domain.SceneFile{EscenaID: escenaID, Tipo: "multiband", S3Key: "k1", S3Uri: "s3://b/k1", Existe: true}
+	ndvi := &domain.SceneFile{EscenaID: escenaID, Tipo: "ndvi", S3Key: "k2", S3Uri: "s3://b/k2", Existe: true}
 
 	if err := repo.Create(ctx, multiband); err != nil {
 		t.Fatalf("Create multiband: %v", err)
@@ -86,22 +91,22 @@ func TestFileRepo_GetByType(t *testing.T) {
 		t.Fatalf("Create ndvi: %v", err)
 	}
 
-	got, err := repo.GetByType(ctx, escenaID, domain.FileNDVI)
+	got, err := repo.GetByTipo(ctx, escenaID, "ndvi")
 	if err != nil {
-		t.Fatalf("GetByType: %v", err)
+		t.Fatalf("GetByTipo: %v", err)
 	}
 	if got == nil {
 		t.Fatal("expected file, got nil")
 	}
-	if got.FileName != "ndvi.png" {
-		t.Errorf("unexpected file: %+v", got)
+	if got.Tipo != "ndvi" {
+		t.Errorf("unexpected tipo: %+v", got)
 	}
 
-	missing, err := repo.GetByType(ctx, escenaID, domain.FileSWIR)
+	missing, err := repo.GetByTipo(ctx, escenaID, "swir")
 	if err != nil {
-		t.Fatalf("GetByType missing: %v", err)
+		t.Fatalf("GetByTipo missing: %v", err)
 	}
 	if missing != nil {
-		t.Errorf("expected nil for missing type, got %+v", missing)
+		t.Errorf("expected nil for missing tipo, got %+v", missing)
 	}
 }

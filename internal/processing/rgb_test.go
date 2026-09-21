@@ -65,8 +65,10 @@ func TestGenerateRGB_BuildsCorrectCommand(t *testing.T) {
 	wantArgs := []string{
 		"-b", "3", "-b", "2", "-b", "1",
 		"-of", "PNG",
-		"-scale",
+		"-scale", "0", "3000", "0", "255",
 		"-ot", "Byte",
+		"-outsize", "400%", "400%",
+		"-r", "lanczos",
 		multibandPath,
 		outputPath,
 	}

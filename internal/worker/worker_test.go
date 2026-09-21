@@ -27,6 +27,10 @@ type mockProductionRepo struct {
 	bloqueadoErr    error
 }
 
+func (m *mockProductionRepo) GetByMonitoringID(ctx context.Context, monitoringID uint) (*domain.Production, error) {
+	return m.production, nil
+}
+
 func (m *mockProductionRepo) GetByProduccionID(ctx context.Context, produccionID int64) (*domain.Production, error) {
 	if m.err != nil {
 		return nil, m.err
@@ -34,11 +38,19 @@ func (m *mockProductionRepo) GetByProduccionID(ctx context.Context, produccionID
 	return m.production, nil
 }
 
-func (m *mockProductionRepo) SetBloqueado(ctx context.Context, produccionID int64, motivo string) error {
+func (m *mockProductionRepo) UpdatePosibleCosecha(ctx context.Context, produccionID int64, posible bool) error {
+	return nil
+}
+
+func (m *mockProductionRepo) GetERPFolioRancho(ctx context.Context, produccionID int64) (folio, rancho string, err error) {
+	return "", "", nil
+}
+
+func (m *mockProductionRepo) SetBloqueado(ctx context.Context, produccionID int64, bloqueado bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bloqueadoCalled = true
-	m.bloqueadoMotivo = motivo
+	m.bloqueadoMotivo = ""
 	return m.bloqueadoErr
 }
 
@@ -61,14 +73,14 @@ type mockSceneRepo struct {
 	upsertErr error
 }
 
-func (m *mockSceneRepo) GetByProduccionAndSceneID(ctx context.Context, produccionID int64, sceneID string) (*domain.Scene, error) {
+func (m *mockSceneRepo) GetByProduccionAndSceneName(ctx context.Context, produccionID int64, sceneName string) (*domain.Scene, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
 	return m.scene, nil
 }
 
-func (m *mockSceneRepo) UpdateStatus(ctx context.Context, id int64, status domain.JobStatus) error {
+func (m *mockSceneRepo) UpdateStatus(ctx context.Context, id uint64, status string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.statusErr != nil {
@@ -78,15 +90,13 @@ func (m *mockSceneRepo) UpdateStatus(ctx context.Context, id int64, status domai
 	return nil
 }
 
-func (m *mockSceneRepo) SetError(ctx context.Context, id int64, errType string, errMsg string) error {
+func (m *mockSceneRepo) SetFailed(ctx context.Context, id uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.setErrErr != nil {
 		return m.setErrErr
 	}
 	m.setErrorCalls++
-	m.errorType = errType
-	m.errorMessage = errMsg
 	return nil
 }
 
@@ -99,15 +109,51 @@ func (m *mockSceneRepo) Upsert(ctx context.Context, s *domain.Scene) error {
 	return nil
 }
 
-func (m *mockSceneRepo) GetPreviousValidScene(ctx context.Context, produccionID int64, beforeDate time.Time) (*domain.Scene, error) {
+func (m *mockSceneRepo) GetPreviousUsableScene(ctx context.Context, monitoringProduccionID uint, beforeDate time.Time) (*domain.Scene, error) {
 	return m.prevScene, nil
+}
+
+func (m *mockSceneRepo) GetOldestPendingByProduccion(ctx context.Context, monitoringProduccionID uint) (*domain.Scene, error) {
+	return nil, nil
+}
+
+func (m *mockSceneRepo) ListFromDateByProduccion(ctx context.Context, monitoringProduccionID uint, fromDate time.Time) ([]*domain.Scene, error) {
+	return nil, nil
+}
+
+func (m *mockSceneRepo) FindMultibandSources(ctx context.Context, sceneName string, excludeProduccionID int64) ([]*domain.MultibandSource, error) {
+	return nil, nil
+}
+
+func (m *mockSceneRepo) CountScenesToProcess(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
+func (m *mockSceneRepo) FindOldestPendingSceneName(ctx context.Context) (string, time.Time, error) {
+	return "", time.Time{}, nil
+}
+
+func (m *mockSceneRepo) ListAllBySceneName(ctx context.Context, sceneName string) ([]*domain.Scene, error) {
+	return nil, nil
+}
+
+func (m *mockSceneRepo) ListByMonitoringProduccion(ctx context.Context, monitoringProduccionID uint) ([]*domain.Scene, error) {
+	return nil, nil
+}
+
+func (m *mockSceneRepo) ResetProcessingToPending(ctx context.Context, monitoringProduccionID uint) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockSceneRepo) ResetAllProcessingToPending(ctx context.Context) (int64, error) {
+	return 0, nil
 }
 
 type mockFileRepo struct {
 	mu      sync.Mutex
 	created []*domain.SceneFile
 
-	byType map[domain.FileType]*domain.SceneFile
+	byTipo map[string]*domain.SceneFile
 }
 
 func (m *mockFileRepo) Create(ctx context.Context, f *domain.SceneFile) error {
@@ -117,11 +163,11 @@ func (m *mockFileRepo) Create(ctx context.Context, f *domain.SceneFile) error {
 	return nil
 }
 
-func (m *mockFileRepo) GetByType(ctx context.Context, escenaID int64, fileType domain.FileType) (*domain.SceneFile, error) {
-	if m.byType == nil {
+func (m *mockFileRepo) GetByTipo(ctx context.Context, escenaID uint64, tipo string) (*domain.SceneFile, error) {
+	if m.byTipo == nil {
 		return nil, nil
 	}
-	f, ok := m.byType[fileType]
+	f, ok := m.byTipo[tipo]
 	if !ok {
 		return nil, nil
 	}
@@ -175,19 +221,6 @@ func (m *mockBandResolver) ResolveBands(ctx context.Context, produccionID int64,
 	return m.bands, m.sclHref, nil
 }
 
-type mockIA struct {
-	result *domain.AnalysisResult
-	err    error
-	called bool
-}
-
-func (m *mockIA) Analyze(ctx context.Context, input IAInput) (*domain.AnalysisResult, error) {
-	m.called = true
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.result, nil
-}
 
 // gdalMockExecutor fakes every GDAL command the pipeline shells out to,
 // without running real GDAL. It writes an empty file at the conventional
@@ -223,7 +256,7 @@ func (m *gdalMockExecutor) Run(ctx context.Context, command string, args []strin
 		if err := os.WriteFile(outputPath, []byte("fake"), 0o644); err != nil {
 			return "", "", err
 		}
-	case "gdal_calc.py":
+	case "gdal_calc.py", "python3":
 		for _, a := range args {
 			if strings.HasPrefix(a, "--outfile=") {
 				outputPath := strings.TrimPrefix(a, "--outfile=")
@@ -323,25 +356,38 @@ func (m *gdalMockExecutor) statsJSON(n int) string {
 
 func testProduction() *domain.Production {
 	planted := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	pbox, _ := json.Marshal(map[string]interface{}{
+		"pbox": []float64{-100, 20, -99, 21},
+	})
+	// tile_bbox same format — a slightly expanded square around the field center
+	tileBBox, _ := json.Marshal(map[string]interface{}{
+		"pbox": []float64{-100.05, 19.95, -98.95, 21.05},
+	})
+	// poligono: [[lon,lat],...] — simple rectangle matching pbox corners
+	poligono, _ := json.Marshal([][2]float64{
+		{-100, 20}, {-99, 20}, {-99, 21}, {-100, 21},
+	})
 	return &domain.Production{
-		ID:               1,
-		ProduccionID:     1234,
-		Monitoring:       true,
-		Bloqueado:        false,
-		BBox:             &domain.BBox{MinX: -100, MinY: 20, MaxX: -99, MaxY: 21},
-		TargetResolution: 10,
-		FechaPlantacion:  &planted,
-		DiasProduccion:   120,
+		ID:                1,
+		ProduccionID:      1234,
+		Monitoring:        true,
+		Bloqueado:         false,
+		MaxDiasMonitoring: 120,
+		FechaPlantacion:   &planted,
+		PBoxJSON:          pbox,
+		TileBBoxJSON:      tileBBox,
+		PoligonoJSON:      poligono,
 	}
 }
 
 func testScene() *domain.Scene {
+	fecha := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	return &domain.Scene{
-		ID:           10,
-		ProduccionID: 1234,
-		SceneID:      "S2A_test_scene",
-		SceneDate:    time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
-		Status:       domain.StatusPending,
+		ID:                     10,
+		MonitoringProduccionID: 1,
+		SceneName:              "S2A_test_scene",
+		Fecha:                  &fecha,
+		Status:                 domain.StatusPending,
 	}
 }
 
@@ -361,7 +407,6 @@ type testHarness struct {
 	s3        *mockS3
 	executor  *gdalMockExecutor
 	bands     *mockBandResolver
-	ia        *mockIA
 }
 
 func newHarness(t *testing.T, cloudBuckets [12]int64) *testHarness {
@@ -424,27 +469,27 @@ func TestProcessScene_HappyPath_FullProcessing(t *testing.T) {
 	if final.Status != domain.StatusCompleted {
 		t.Errorf("status = %v, want COMPLETED", final.Status)
 	}
-	if !final.PassesQuality {
-		t.Error("expected PassesQuality = true for 12%% cloud cover")
+	if !final.Usable {
+		t.Error("expected Usable = true for 12%% cloud cover")
 	}
-	if final.CloudCoverBBox == nil || *final.CloudCoverBBox != 12.0 {
-		t.Errorf("CloudCoverBBox = %v, want 12.0", final.CloudCoverBBox)
+	if final.ProductionCloud == nil || *final.ProductionCloud != 12.0 {
+		t.Errorf("ProductionCloud = %v, want 12.0", final.ProductionCloud)
 	}
-	if !final.HasMultiband || !final.HasParams || !final.HasRGB {
-		t.Errorf("expected has_multiband/has_params/has_rgb all true, got %+v", final)
+	if !final.TruthTifExists || !final.ParamsExists || !final.RenderTifExists {
+		t.Errorf("expected TruthTifExists/ParamsExists/RenderTifExists all true, got %+v", final)
 	}
 
-	// multiband + 4 compositions + 7 indices + params.json = 13 files.
-	if len(h.fileRepo.created) != 13 {
-		t.Errorf("registered files = %d, want 13", len(h.fileRepo.created))
+	// multiband + 4 compositions + 7 indices + params.json + ia_req.json = 14 files.
+	if len(h.fileRepo.created) != 14 {
+		t.Errorf("registered files = %d, want 14", len(h.fileRepo.created))
 	}
-	if len(h.s3.uploads) != 13 {
-		t.Errorf("uploaded files = %d, want 13", len(h.s3.uploads))
+	if len(h.s3.uploads) != 14 {
+		t.Errorf("uploaded files = %d, want 14", len(h.s3.uploads))
 	}
 
 	foundParams := false
 	for _, f := range h.fileRepo.created {
-		if f.FileType == domain.FileParams {
+		if f.Tipo == "params" {
 			foundParams = true
 		}
 	}
@@ -465,20 +510,20 @@ func TestProcessScene_AboveCloudThreshold_NaturalOnly(t *testing.T) {
 	if final == nil {
 		t.Fatal("expected scene finalized")
 	}
-	if final.PassesQuality {
-		t.Error("expected PassesQuality = false for 40%% cloud cover")
+	if final.Usable {
+		t.Error("expected Usable = false for 40%% cloud cover")
 	}
-	if final.HasParams {
-		t.Error("expected HasParams = false when only natural.png is generated")
+	if final.ParamsExists {
+		t.Error("expected ParamsExists = false when only natural is generated")
 	}
 
-	// multiband.tif + natural.png only.
+	// multiband.tif (truth_tif) + natural.png (image) only.
 	if len(h.fileRepo.created) != 2 {
 		t.Errorf("registered files = %d, want 2 (multiband + natural)", len(h.fileRepo.created))
 	}
 	for _, f := range h.fileRepo.created {
-		if f.FileType != domain.FileMultiband && f.FileType != domain.FileNatural {
-			t.Errorf("unexpected file type registered: %v", f.FileType)
+		if f.Tipo != "truth_tif" && f.Tipo != "image" {
+			t.Errorf("unexpected file tipo registered: %v", f.Tipo)
 		}
 	}
 }
@@ -495,97 +540,29 @@ func TestProcessScene_GDALError_MarksFailed(t *testing.T) {
 	}
 
 	if h.sceneRepo.setErrorCalls != 1 {
-		t.Fatalf("expected SetError called once, got %d", h.sceneRepo.setErrorCalls)
-	}
-	if h.sceneRepo.errorType != string(domain.ErrGDAL) {
-		t.Errorf("errorType = %q, want %q", h.sceneRepo.errorType, domain.ErrGDAL)
+		t.Fatalf("expected SetFailed called once, got %d", h.sceneRepo.setErrorCalls)
 	}
 	if h.sceneRepo.upserted != nil {
 		t.Error("scene should not be finalized as completed after a GDAL error")
 	}
 }
 
-func TestProcessScene_IAError_StillCompletes(t *testing.T) {
+func TestProcessScene_IAReqGenerated_OnSuccess(t *testing.T) {
 	h := newHarness(t, cloudCoverBuckets(12))
-	h.ia = &mockIA{err: errNotConfigured}
-	h.deps.IA = h.ia
 	w := New(h.deps)
 
 	if err := w.ProcessScene(context.Background(), 1234, "S2A_test_scene"); err != nil {
-		t.Fatalf("ProcessScene should tolerate IA error, got: %v", err)
+		t.Fatalf("ProcessScene failed: %v", err)
 	}
 
-	if !h.ia.called {
-		t.Error("expected IA client to be invoked")
-	}
-
-	final := h.sceneRepo.upserted
-	if final == nil {
-		t.Fatal("expected scene finalized")
-	}
-	if final.Status != domain.StatusCompleted {
-		t.Errorf("status = %v, want COMPLETED despite IA error", final.Status)
-	}
-	if final.HasAnalisis {
-		t.Error("expected HasAnalisis = false after IA error")
-	}
-
+	var found bool
 	for _, f := range h.fileRepo.created {
-		if f.FileType == domain.FileAnalisis {
-			t.Error("analisis.json should not be registered when IA fails")
+		if f.Tipo == string(domain.FileIAReq) {
+			found = true
 		}
 	}
-}
-
-func TestProcessScene_PosibleCosecha_BlocksProduction(t *testing.T) {
-	h := newHarness(t, cloudCoverBuckets(12))
-	h.ia = &mockIA{result: &domain.AnalysisResult{
-		EstadoGeneral:  "maduro",
-		PosibleCosecha: true,
-		Confianza:      0.9,
-	}}
-	h.deps.IA = h.ia
-	w := New(h.deps)
-
-	if err := w.ProcessScene(context.Background(), 1234, "S2A_test_scene"); err != nil {
-		t.Fatalf("ProcessScene failed: %v", err)
-	}
-
-	if !h.prodRepo.bloqueadoCalled {
-		t.Error("expected SetBloqueado to be called when posible_cosecha is true")
-	}
-	if h.prodRepo.bloqueadoMotivo == "" {
-		t.Error("expected a non-empty motivo for SetBloqueado")
-	}
-
-	final := h.sceneRepo.upserted
-	if final == nil {
-		t.Fatal("expected scene finalized")
-	}
-	if final.Status != domain.StatusCompleted {
-		t.Errorf("status = %v, want COMPLETED", final.Status)
-	}
-	if !final.HasAnalisis {
-		t.Error("expected HasAnalisis = true")
-	}
-}
-
-func TestProcessScene_NoCosecha_DoesNotBlockProduction(t *testing.T) {
-	h := newHarness(t, cloudCoverBuckets(12))
-	h.ia = &mockIA{result: &domain.AnalysisResult{
-		EstadoGeneral:  "bueno",
-		PosibleCosecha: false,
-		Confianza:      0.9,
-	}}
-	h.deps.IA = h.ia
-	w := New(h.deps)
-
-	if err := w.ProcessScene(context.Background(), 1234, "S2A_test_scene"); err != nil {
-		t.Fatalf("ProcessScene failed: %v", err)
-	}
-
-	if h.prodRepo.bloqueadoCalled {
-		t.Error("expected SetBloqueado not to be called when posible_cosecha is false")
+	if !found {
+		t.Error("expected multiband.ia_req.json to be registered")
 	}
 }
 
@@ -603,10 +580,7 @@ func TestProcessScene_ValidationError_ProductionNotMonitoring(t *testing.T) {
 		t.Error("scene should never be marked PROCESSING when production fails validation")
 	}
 	if h.sceneRepo.setErrorCalls != 1 {
-		t.Errorf("expected SetError called once for validation failure, got %d", h.sceneRepo.setErrorCalls)
-	}
-	if h.sceneRepo.errorType != string(domain.ErrValidation) {
-		t.Errorf("errorType = %q, want VALIDATION_ERROR", h.sceneRepo.errorType)
+		t.Errorf("expected SetFailed called once for validation failure, got %d", h.sceneRepo.setErrorCalls)
 	}
 }
 
@@ -626,9 +600,9 @@ func TestProcessScene_HistoricalChain_UsesPreviousParams(t *testing.T) {
 		t.Fatalf("marshal prev params: %v", err)
 	}
 
-	h.sceneRepo.prevScene = &domain.Scene{ID: 9, ProduccionID: 1234, SceneID: "S2A_prev_scene", PassesQuality: true}
-	h.fileRepo.byType = map[domain.FileType]*domain.SceneFile{
-		domain.FileParams: {ID: 1, EscenaID: 9, FileType: domain.FileParams, S3Bucket: "test-bucket", S3Key: "scenes/S2A_prev_scene/params.json"},
+	h.sceneRepo.prevScene = &domain.Scene{ID: 9, MonitoringProduccionID: 1, SceneName: "S2A_prev_scene", Usable: true}
+	h.fileRepo.byTipo = map[string]*domain.SceneFile{
+		"params": {ID: 1, EscenaID: 9, Tipo: "params", S3Uri: "s3://test-bucket/scenes/S2A_prev_scene/params.json", S3Key: "scenes/S2A_prev_scene/params.json"},
 	}
 	h.s3.downloadData = data
 
@@ -639,7 +613,7 @@ func TestProcessScene_HistoricalChain_UsesPreviousParams(t *testing.T) {
 
 	var paramsPath string
 	for _, f := range h.fileRepo.created {
-		if f.FileType == domain.FileParams {
+		if f.Tipo == "params" {
 			paramsPath = f.S3Key
 		}
 	}
@@ -657,4 +631,3 @@ func TestProcessScene_HistoricalChain_UsesPreviousParams(t *testing.T) {
 	}
 }
 
-var errNotConfigured = &domain.ProcessingError{Type: domain.ErrIA, Message: "IA service unreachable"}

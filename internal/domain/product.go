@@ -17,6 +17,8 @@ const (
 	FileSWIR       FileType = "swir"
 	FileParams     FileType = "params"
 	FileAnalisis   FileType = "analisis"
+	FileIAReq      FileType = "ia_req"
+	FileIAResult   FileType = "ia"
 )
 
 func AllImageTypes() []FileType {

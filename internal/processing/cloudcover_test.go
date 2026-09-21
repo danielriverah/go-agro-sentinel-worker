@@ -87,7 +87,7 @@ func TestCalculateCloudCover_KnownDistribution(t *testing.T) {
 		buckets: [12]int64{0, 0, 0, 0, 500, 0, 0, 0, 100, 100, 0, 0},
 	}
 
-	cloudPct, coverage, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir)
+	cloudPct, coverage, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestCalculateCloudCover_KnownDistribution(t *testing.T) {
 		t.Errorf("expected 1 gdalinfo call, got %d", mock.infoCalls)
 	}
 
-	warpedPath := filepath.Join(workDir, "SCL.tif")
+	warpedPath := filepath.Join(workDir, "scl_cloud.tif")
 	if _, err := os.Stat(warpedPath); err != nil {
 		t.Errorf("expected warped SCL file at %s: %v", warpedPath, err)
 	}
@@ -129,7 +129,7 @@ func TestCalculateCloudCover_50PctVeg20PctCloud(t *testing.T) {
 	// valid total excludes class0: 100+50+500+100+100+0+100+30+20+0 = 1000
 	// cloud = class3(50)+class8(100)+class9(30)+class10(20) = 200 -> 20%
 
-	cloudPct, coverage, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir)
+	cloudPct, coverage, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestCalculateCloudCover_ExcludesNoData(t *testing.T) {
 		buckets: [12]int64{1000, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0},
 	}
 
-	cloudPct, coverage, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir)
+	cloudPct, coverage, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestCalculateCloudCover_InvalidBBox(t *testing.T) {
 
 	badBBox := domain.BBox{MinX: 10, MinY: 20, MaxX: 5, MaxY: 21}
 
-	_, _, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", badBBox, workDir)
+	_, _, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", badBBox, workDir, "")
 	if err == nil {
 		t.Fatal("expected error for invalid bbox, got nil")
 	}
@@ -191,7 +191,7 @@ func TestCalculateCloudCover_AllNoData(t *testing.T) {
 		buckets: [12]int64{1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	}
 
-	_, _, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir)
+	_, _, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir, "")
 	if err == nil {
 		t.Fatal("expected error when all pixels are no-data, got nil")
 	}
@@ -204,7 +204,7 @@ func TestCalculateCloudCover_GDALInfoError(t *testing.T) {
 		infoErr: &domain.ProcessingError{Type: domain.ErrGDAL, Message: "gdalinfo failed"},
 	}
 
-	_, _, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir)
+	_, _, err := CalculateCloudCover(context.Background(), mock, "/vsis3/bucket/SCL.tif", testCloudBBox(), workDir, "")
 	if err == nil {
 		t.Fatal("expected error when gdalinfo fails, got nil")
 	}

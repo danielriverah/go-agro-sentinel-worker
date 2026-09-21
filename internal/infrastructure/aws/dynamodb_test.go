@@ -24,7 +24,6 @@ func createTable(t *testing.T, client *dynamodb.Client, tableName, hashKey strin
 		BillingMode: types.BillingModePayPerRequest,
 	})
 	if err != nil {
-		// Table may already exist from a previous run.
 		t.Logf("CreateTable(%s): %v (may already exist)", tableName, err)
 	}
 }
@@ -44,8 +43,8 @@ func TestDynamoDBClient_ListActiveProducciones(t *testing.T) {
 	ctx := context.Background()
 
 	items := []DynamoProduction{
-		{ProduccionID: 1001, Activa: true, Cultivo: "maiz", Ciclo: "2026-A", FechaPlantacion: "2026-01-01", DiasProduccion: 90, ArticuloID: 5001, CentroCostoID: 101, NombreRancho: "Rancho Norte"},
-		{ProduccionID: 1002, Activa: false, Cultivo: "soja", Ciclo: "2026-A", FechaPlantacion: "2026-01-15", DiasProduccion: 120, ArticuloID: 5002, CentroCostoID: 102, NombreRancho: "Rancho Sur"},
+		{ProduccionID: 1001, Estatus: "OPEN", FechaPlantacion: "2026-01-01", DiasProduccion: 90, Folio: "F001"},
+		{ProduccionID: 1002, Estatus: "CLOSED", FechaPlantacion: "2026-01-15", DiasProduccion: 120, Folio: "F002"},
 	}
 
 	for _, item := range items {
@@ -69,12 +68,12 @@ func TestDynamoDBClient_ListActiveProducciones(t *testing.T) {
 	for _, p := range got {
 		if p.ProduccionID == 1001 {
 			found = true
-			if !p.Activa {
-				t.Errorf("production 1001: Activa = false, want true")
+			if p.Estatus != "OPEN" {
+				t.Errorf("production 1001: Estatus = %q, want OPEN", p.Estatus)
 			}
 		}
 		if p.ProduccionID == 1002 {
-			t.Errorf("production 1002 is inactive and should not be returned")
+			t.Errorf("production 1002 is CLOSED and should not be returned")
 		}
 	}
 	if !found {
@@ -92,25 +91,23 @@ func TestDynamoDBClient_ListEscenas(t *testing.T) {
 
 	rawClient := dynamodb.NewFromConfig(awsCfg)
 	tableName := "test_monitoring_escenas"
-	createTable(t, rawClient, tableName, "scene_id")
+	createTable(t, rawClient, tableName, "clave")
 
 	ctx := context.Background()
 
+	// Key schema: id (PK) = "PROD#<produccion_id>", clave (SK) = scene name.
 	scenes := []DynamoScene{
 		{
-			SceneID:      "scene-a",
-			ProduccionID: 2001,
-			Date:         "2026-02-01",
-			CloudCover:   12.5,
-			STACAssets: map[string]DynamoAsset{
-				"B04": {Href: "https://example.com/b04.tif", Resolution: 10},
-			},
+			ID:         "PROD#2001",
+			SceneID:    "scene-a",
+			Date:       "2026-02-01",
+			CloudCover: 12.5,
 		},
 		{
-			SceneID:      "scene-b",
-			ProduccionID: 2002,
-			Date:         "2026-02-02",
-			CloudCover:   5.0,
+			ID:         "PROD#2002",
+			SceneID:    "scene-b",
+			Date:       "2026-02-02",
+			CloudCover: 5.0,
 		},
 	}
 
@@ -136,12 +133,5 @@ func TestDynamoDBClient_ListEscenas(t *testing.T) {
 	}
 	if got[0].SceneID != "scene-a" {
 		t.Errorf("SceneID = %q, want scene-a", got[0].SceneID)
-	}
-	asset, ok := got[0].STACAssets["B04"]
-	if !ok {
-		t.Fatalf("expected STAC asset B04, got %+v", got[0].STACAssets)
-	}
-	if asset.Resolution != 10 {
-		t.Errorf("asset.Resolution = %d, want 10", asset.Resolution)
 	}
 }

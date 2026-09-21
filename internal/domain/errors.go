@@ -15,6 +15,10 @@ const (
 	ErrDynamoDB   ErrType = "DYNAMODB_ERROR"
 	ErrDisk       ErrType = "DISK_ERROR"
 	ErrSQS        ErrType = "SQS_ERROR"
+	// ErrNoData means the SCL raster had zero valid pixels in the production
+	// polygon — the sensor did not acquire data for that area on that date.
+	// Treated as production_cloud=101 (distinct from 100% cloud cover).
+	ErrNoData ErrType = "NODATA"
 )
 
 type ProcessingError struct {

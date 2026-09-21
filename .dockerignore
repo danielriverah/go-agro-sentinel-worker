@@ -3,3 +3,5 @@ bin/
 tmp/
 *.exe
 docs/
+web/
+data/

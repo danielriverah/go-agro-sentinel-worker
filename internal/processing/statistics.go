@@ -33,23 +33,21 @@ type IndexStats struct {
 }
 
 // gdalInfoStatsJSON mirrors the subset of `gdalinfo -json -stats -hist`
-// output this package needs: per-band statistics and histogram buckets used
-// to approximate percentiles.
+// output this package needs. GDAL places minimum/maximum/mean/stdDev directly
+// on each band object (not inside a nested sub-object).
 type gdalInfoStatsJSON struct {
 	Bands []struct {
-		Band      int `json:"band"`
-		Metadata  map[string]json.RawMessage `json:"metadata"`
-		ComputedStatistics struct {
-			Minimum   float64 `json:"minimum"`
-			Maximum   float64 `json:"maximum"`
-			Mean      float64 `json:"mean"`
-			StdDev    float64 `json:"stdDev"`
-		} `json:"computedStatistics"`
+		Band    int                        `json:"band"`
+		Minimum float64                    `json:"minimum"`
+		Maximum float64                    `json:"maximum"`
+		Mean    float64                    `json:"mean"`
+		StdDev  float64                    `json:"stdDev"`
+		Metadata map[string]json.RawMessage `json:"metadata"`
 		Histogram struct {
-			Count   int       `json:"count"`
-			Min     float64   `json:"min"`
-			Max     float64   `json:"max"`
-			Buckets []int64   `json:"buckets"`
+			Count   int     `json:"count"`
+			Min     float64 `json:"min"`
+			Max     float64 `json:"max"`
+			Buckets []int64 `json:"buckets"`
 		} `json:"histogram"`
 	} `json:"bands"`
 }
@@ -89,10 +87,10 @@ func CalculateBandStatistics(ctx context.Context, executor GDALExecutor, multiba
 		}
 		b := parsed.Bands[i]
 		stats := BandStats{
-			Mean: b.ComputedStatistics.Mean,
-			Std:  b.ComputedStatistics.StdDev,
-			Min:  b.ComputedStatistics.Minimum,
-			Max:  b.ComputedStatistics.Maximum,
+			Mean: b.Mean,
+			Std:  b.StdDev,
+			Min:  b.Minimum,
+			Max:  b.Maximum,
 		}
 		p25, p50, p75 := percentilesFromHistogram(b.Histogram.Min, b.Histogram.Max, b.Histogram.Buckets, stats.Mean)
 		stats.P25, stats.P50, stats.P75 = p25, p50, p75
@@ -135,10 +133,10 @@ func CalculateIndexStatistics(ctx context.Context, executor GDALExecutor, multib
 
 		b := parsed.Bands[0]
 		stats := IndexStats{
-			Mean: b.ComputedStatistics.Mean,
-			Std:  b.ComputedStatistics.StdDev,
-			Min:  b.ComputedStatistics.Minimum,
-			Max:  b.ComputedStatistics.Maximum,
+			Mean: b.Mean,
+			Std:  b.StdDev,
+			Min:  b.Minimum,
+			Max:  b.Maximum,
 		}
 		p25, p50, p75 := percentilesFromHistogram(b.Histogram.Min, b.Histogram.Max, b.Histogram.Buckets, stats.Mean)
 		stats.P25, stats.P50, stats.P75 = p25, p50, p75

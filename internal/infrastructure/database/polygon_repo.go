@@ -24,14 +24,14 @@ func NewPolygonRepo(db *sql.DB, bboxFromWKT func(wkt string) (*domain.BBox, erro
 	return &PolygonRepo{db: db, bboxFromWKT: bboxFromWKT}
 }
 
-// GetPolygonBBox fetches the monitored polygon for produccionID from
-// asignaciones_zonas_producciones and returns its bounding box. It returns
-// (nil, nil) when the production has no assigned polygon.
-func (r *PolygonRepo) GetPolygonBBox(ctx context.Context, produccionID int64) (*domain.BBox, error) {
+// GetPolygon fetches the raw polygon string and its bounding box for produccionID
+// from asignaciones_zonas_producciones. Returns ("", nil, nil) when no polygon is assigned.
+func (r *PolygonRepo) GetPolygon(ctx context.Context, produccionID int64) (string, *domain.BBox, error) {
 	const q = `
-SELECT ST_AsText(poligono)
+SELECT poligono
 FROM asignaciones_zonas_producciones
 WHERE produccion_id = ?
+  AND poligono IS NOT NULL
 LIMIT 1
 `
 
@@ -39,15 +39,15 @@ LIMIT 1
 	err := r.db.QueryRowContext(ctx, q, produccionID).Scan(&wkt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return "", nil, nil
 		}
-		return nil, fmt.Errorf("getting polygon for produccion %d: %w", produccionID, err)
+		return "", nil, fmt.Errorf("getting polygon for produccion %d: %w", produccionID, err)
 	}
 
 	bbox, err := r.bboxFromWKT(wkt)
 	if err != nil {
-		return nil, fmt.Errorf("parsing polygon for produccion %d: %w", produccionID, err)
+		return "", nil, fmt.Errorf("parsing polygon for produccion %d: %w", produccionID, err)
 	}
 
-	return bbox, nil
+	return wkt, bbox, nil
 }

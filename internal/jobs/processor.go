@@ -26,7 +26,7 @@ type SceneProcessor interface {
 // processor needs to enforce idempotency and retry limits before handing a
 // job to the worker.
 type SceneRepository interface {
-	GetByProduccionAndSceneID(ctx context.Context, produccionID int64, sceneID string) (*domain.Scene, error)
+	GetByProduccionAndSceneName(ctx context.Context, produccionID int64, sceneName string) (*domain.Scene, error)
 }
 
 // ProcessorConfig configures a Processor's polling and retry behavior.
@@ -115,7 +115,7 @@ func (p *Processor) handleMessage(ctx context.Context, m aws.SQSMessage) {
 
 	log := p.log.With("job_id", msg.JobID, "produccion_id", msg.ProduccionID, "scene_id", msg.SceneID)
 
-	scene, err := p.scenes.GetByProduccionAndSceneID(ctx, msg.ProduccionID, msg.SceneID)
+	scene, err := p.scenes.GetByProduccionAndSceneName(ctx, msg.ProduccionID, msg.SceneID)
 	if err != nil {
 		log.Error("failed to look up scene, leaving message for redelivery", "error", err)
 		return

@@ -1,0 +1,61 @@
+version: '2.1'
+
+# Producción: solo los binarios Go.
+# MySQL y S3/DynamoDB son servicios externos — configurar vía variables de entorno
+# o montar un config.yaml con las credenciales.
+#
+# El volumen "worker-locks" es un tmpfs compartido entre los tres servicios para
+# que el API pueda leer los lock files que escribe el worker (status/cancel/unlock).
+
+services:
+  api:
+    container_name: agro-sentinel-api
+    image: agro-sentinel-worker:latest
+    command: api
+    restart: always
+    ports:
+      - "6000:6000"
+    mem_limit: 128m
+    memswap_limit: 128m
+    environment:
+      CONFIG_PATH: /etc/agro-sentinel/config.yaml
+      GOMEMLIMIT: 110MiB
+    volumes:
+      - ./configs/config.yaml:/etc/agro-sentinel/config.yaml:ro
+      - worker-locks:/tmp
+
+  worker:
+    container_name: agro-sentinel-worker
+    image: agro-sentinel-worker:latest
+    command: worker --auto
+    restart: always
+    mem_limit: 512m
+    memswap_limit: 512m
+    environment:
+      CONFIG_PATH: /etc/agro-sentinel/config.yaml
+      GOMEMLIMIT: 460MiB
+    volumes:
+      - ./configs/config.yaml:/etc/agro-sentinel/config.yaml:ro
+      - worker-locks:/tmp
+
+  sync:
+    container_name: agro-sentinel-sync
+    image: agro-sentinel-worker:latest
+    command: sync --auto
+    restart: always
+    mem_limit: 128m
+    memswap_limit: 128m
+    environment:
+      CONFIG_PATH: /etc/agro-sentinel/config.yaml
+      GOMEMLIMIT: 110MiB
+    volumes:
+      - ./configs/config.yaml:/etc/agro-sentinel/config.yaml:ro
+      - worker-locks:/tmp
+
+volumes:
+  worker-locks:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=32m,mode=1777

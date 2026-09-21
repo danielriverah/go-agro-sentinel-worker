@@ -16,15 +16,15 @@ awslocal dynamodb create-table \
   --key-schema AttributeName=produccion_id,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST 2>/dev/null || echo "Tabla monitoring_producciones ya existe"
 
-# DynamoDB — tabla escenas
+# DynamoDB — tabla escenas (sort key: clave = scene name)
 awslocal dynamodb create-table \
   --table-name monitoring_escenas \
   --attribute-definitions \
     AttributeName=produccion_id,AttributeType=N \
-    AttributeName=scene_id,AttributeType=S \
+    AttributeName=clave,AttributeType=S \
   --key-schema \
     AttributeName=produccion_id,KeyType=HASH \
-    AttributeName=scene_id,KeyType=RANGE \
+    AttributeName=clave,KeyType=RANGE \
   --billing-mode PAY_PER_REQUEST 2>/dev/null || echo "Tabla monitoring_escenas ya existe"
 
 echo "=== Localstack listo ==="

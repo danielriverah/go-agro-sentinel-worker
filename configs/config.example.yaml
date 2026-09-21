@@ -34,6 +34,10 @@ sqs:
 dynamodb:
   table_producciones: monitoring_producciones
   table_escenas: monitoring_escenas
+  region: ""            # us-east-1 — dejar vacío para heredar de aws.region
+  endpoint: ""          # dejar vacío para AWS real; http://localstack:4566 para local
+  access_key_id: ""     # credenciales explícitas para AWS real
+  secret_access_key: "" # si vacío usa el default credential chain (env vars / instance profile)
 
 mysql:
   host: localhost
@@ -43,9 +47,15 @@ mysql:
   password: ""
 
 ia:
-  enabled: true
-  service_url: http://localhost:8081
-  timeout_seconds: 60
+  # Análisis IA vía AWS Bedrock — se dispara manualmente desde POST /api/v1/escenas/{id}/analizar
+  # Dejar vacío en local; poner credenciales reales en producción (o usar variables de entorno).
+  bedrock:
+    model_id: ""                # ej: global.anthropic.claude-haiku-4-5-20251001-v1:0
+    region: "us-east-1"
+    api_key: ""                 # AWS Secret Access Key para Bedrock (BEDROCK_API_KEY)
+    access_key_id: ""           # AWS Access Key ID para Bedrock (IA_AWS_ACCESS_KEY_ID)
+    secret_access_key: ""       # alternativa a api_key (IA_AWS_SECRET_ACCESS_KEY)
+    timeout_seconds: 60
 
 gdal:
   timeout_seconds: 300

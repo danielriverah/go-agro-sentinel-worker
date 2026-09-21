@@ -90,7 +90,7 @@ type mockSceneRepo struct {
 	err   error
 }
 
-func (r *mockSceneRepo) GetByProduccionAndSceneID(ctx context.Context, produccionID int64, sceneID string) (*domain.Scene, error) {
+func (r *mockSceneRepo) GetByProduccionAndSceneName(ctx context.Context, produccionID int64, sceneName string) (*domain.Scene, error) {
 	return r.scene, r.err
 }
 

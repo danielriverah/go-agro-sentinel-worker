@@ -29,10 +29,11 @@ type ParamsInput struct {
 // HistoricoEntry summarizes one previous scene within the historical chain,
 // along with the deltas from that scene to the one immediately after it.
 type HistoricoEntry struct {
-	SceneID   string             `json:"scene_id"`
-	SceneDate string             `json:"scene_date"`
-	Indices   map[string]IndexStats `json:"indices,omitempty"`
-	Delta     map[string]float64 `json:"delta,omitempty"`
+	SceneID        string               `json:"scene_id"`
+	SceneDate      string               `json:"scene_date"`
+	CloudCoverBBox float64              `json:"cloud_cover_bbox"`
+	Indices        map[string]IndexStats `json:"indices,omitempty"`
+	Delta          map[string]float64   `json:"delta,omitempty"`
 }
 
 // Params is the JSON-serializable structure written to params.json,
@@ -95,10 +96,11 @@ func BuildParams(current ParamsInput, previousParams *Params) *Params {
 	historico := make([]HistoricoEntry, 0, len(previousParams.Historico)+1)
 
 	prevEntry := HistoricoEntry{
-		SceneID:   previousParams.SceneID,
-		SceneDate: previousParams.SceneDate,
-		Indices:   previousParams.Indices,
-		Delta:     computeDeltas(previousParams.Indices, indices),
+		SceneID:        previousParams.SceneID,
+		SceneDate:      previousParams.SceneDate,
+		CloudCoverBBox: previousParams.CloudCoverBBox,
+		Indices:        previousParams.Indices,
+		Delta:          computeDeltas(previousParams.Indices, indices),
 	}
 	historico = append(historico, prevEntry)
 	historico = append(historico, previousParams.Historico...)

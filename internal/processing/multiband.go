@@ -101,6 +101,7 @@ func (b *MultibandBuilder) warpBand(ctx context.Context, band domain.BandInfo, b
 	args := []string{
 		"-t_srs", TargetSRS,
 		"-te", fmt.Sprintf("%v", bbox.MinX), fmt.Sprintf("%v", bbox.MinY), fmt.Sprintf("%v", bbox.MaxX), fmt.Sprintf("%v", bbox.MaxY),
+		"-te_srs", "EPSG:4326", // tile_bbox is stored in WGS84 (lon/lat degrees)
 		"-tr", res, res,
 		"-r", resamplingMethod,
 		band.Href,

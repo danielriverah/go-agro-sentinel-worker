@@ -32,6 +32,7 @@ var bandIndex = map[domain.Band]int{
 	domain.BandB8A: 8,
 	domain.BandB11: 9,
 	domain.BandB12: 10,
+	domain.BandSCL: 11,
 }
 
 // AllCompositions returns the standard RGB band compositions.
@@ -44,16 +45,32 @@ func AllCompositions() []CompositionDefinition {
 	}
 }
 
+// pngUpscaleFactor controls how much the output PNGs are enlarged relative to
+// the native multiband resolution (10m/px). A 4× scale makes the images
+// visually smoother without altering the underlying spectral data.
+const pngUpscaleFactor = 4
+
+// sentinel2ScaleMin / sentinel2ScaleMax define the fixed input DN range for
+// Sentinel-2 L2A surface reflectance (×10000). Using a fixed range instead of
+// auto-scale keeps brightness consistent across productions and dates.
+const sentinel2ScaleMin = "0"
+const sentinel2ScaleMax = "3000"
+
 // GenerateRGB creates an 8-bit RGB PNG from multibandPath using the given
-// 1-based band numbers for red, green, and blue.
+// 1-based band numbers for red, green, and blue. The output is upscaled by
+// pngUpscaleFactor using Lanczos resampling for visual quality.
+// A fixed DN scale (0–3000) is applied so all images have consistent brightness.
 func GenerateRGB(ctx context.Context, executor GDALExecutor, multibandPath string, outputPath string, redBand, greenBand, blueBand int) error {
+	scale := strconv.Itoa(pngUpscaleFactor * 100) + "%"
 	args := []string{
 		"-b", strconv.Itoa(redBand),
 		"-b", strconv.Itoa(greenBand),
 		"-b", strconv.Itoa(blueBand),
 		"-of", "PNG",
-		"-scale",
+		"-scale", sentinel2ScaleMin, sentinel2ScaleMax, "0", "255",
 		"-ot", "Byte",
+		"-outsize", scale, scale,
+		"-r", "lanczos",
 		multibandPath,
 		outputPath,
 	}

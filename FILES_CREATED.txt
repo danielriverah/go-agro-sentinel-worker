@@ -1,0 +1,291 @@
+================================================================================
+                   GUIAS CREADAS - STARTUP Y SYNC TESTING
+                    Agro Sentinel Worker - 2026-09-04
+================================================================================
+
+ARCHIVOS PRINCIPALES CREADOS:
+────────────────────────────────────────────────────────────────────────────
+
+1. DOCUMENTACIÓN (5 archivos)
+   ────────────────────────────────────────────────────────────────────────
+
+   QUICK_START.md (7.7 KB)
+   └─ Guía de 5 minutos para comenzar
+   └─ Setup en 4 pasos
+   └─ Testing de sincronización en 3 pasos
+   └─ Para: Usuarios nuevos
+
+   STARTUP_GUIDE.md (15 KB)
+   └─ Guía paso a paso para arrancar desde cero
+   └─ 10 pasos detallados (requisitos, Docker, verificación)
+   └─ 30-60 minutos de configuración
+   └─ Para: Desarrolladores
+
+   SYNC_TESTING_GUIDE.md (19 KB)
+   └─ 5 tests progresivos de sincronización
+   └─ Test 1: Básico, Test 2: Batch, Test 3: Escenas, Test 4: Estados, Test 5: S3
+   └─ 45 minutos de testing completo
+   └─ Para: QA / Desarrolladores
+
+   SYNC_TESTING_CHECKLIST.md (12 KB)
+   └─ Checklist interactivo verificable (70+ pasos)
+   └─ Cada paso con comando y resultado esperado
+   └─ 90 minutos de testing exhaustivo
+   └─ Para: QA / Testing manual
+
+   SYNC_TROUBLESHOOTING.md (18 KB)
+   └─ 30+ problemas comunes y soluciones
+   └─ Específicos por SO (Windows, Linux, Mac)
+   └─ Troubleshooting paso a paso
+   └─ Para: Desarrolladores / SysAdmins
+
+2. SCRIPTS DE SETUP (2 archivos)
+   ────────────────────────────────────────────────────────────────────────
+
+   scripts/setup-local-env.sh (13 KB - Bash)
+   └─ Setup automático completo para Linux/Mac
+   └─ Verifica requisitos, construye imágenes, inicia servicios
+   └─ Carga datos de prueba opcionalmente
+   └─ Duración: 5-10 minutos
+
+   scripts/setup-local-env.ps1 (14 KB - PowerShell)
+   └─ Setup automático completo para Windows
+   └─ Idéntico a bash, adaptado a PowerShell
+   └─ Flags: -SkipCleanup, -SkipBuild, -LoadTestData
+   └─ Duración: 5-10 minutos
+
+3. SCRIPTS DE TESTING (1 archivo)
+   ────────────────────────────────────────────────────────────────────────
+
+   scripts/test-sync-flow.sh (13 KB - Bash)
+   └─ Suite de 5 tests automatizados
+   └─ Test 1: Sync básico (1 prod)
+   └─ Test 2: Batch (5 prods)
+   └─ Test 3: Escenas (3 escenas)
+   └─ Test 4: Cambios de estado
+   └─ Test 5: Verificación de logs
+   └─ Duración: 5-10 minutos
+   └─ Output: Resumen X/5 tests pasados
+
+4. ÍNDICE Y RESUMEN (2 archivos)
+   ────────────────────────────────────────────────────────────────────────
+
+   GUIAS_CREADAS.md (Este documento)
+   └─ Descripción de todas las guías
+   └─ Flujos de usuario recomendados
+   └─ Tiempos estimados
+
+   FILES_CREATED.txt (Este archivo)
+   └─ Resumen visual de archivos creados
+   └─ Instrucciones de uso
+
+================================================================================
+CÓMO EMPEZAR:
+════════════════════════════════════════════════════════════════════════════
+
+Opción 1: RÁPIDO (5 minutos)
+────────────────────────────────────────────────────────────────────────────
+1. Lee: QUICK_START.md
+2. Ejecuta: ./scripts/setup-local-env.sh (o .ps1 en Windows)
+3. Prueba insertar un dato
+
+Opción 2: COMPLETO (2-3 horas)
+────────────────────────────────────────────────────────────────────────────
+1. Lee: STARTUP_GUIDE.md
+2. Sigue pasos 1-7 manualmente
+3. Lee: SYNC_TESTING_GUIDE.md
+4. Ejecuta todos los 5 tests
+5. Usa: SYNC_TESTING_CHECKLIST.md como verificación final
+
+Opción 3: TESTING EXHAUSTIVO (90 minutos)
+────────────────────────────────────────────────────────────────────────────
+1. Ejecuta: ./scripts/setup-local-env.sh
+2. Completa: SYNC_TESTING_CHECKLIST.md paso a paso
+3. Documenta resultados en la sección final
+
+================================================================================
+RECURSOS POR TIPO DE USUARIO:
+════════════════════════════════════════════════════════════════════════════
+
+QA / Testing:
+  → QUICK_START.md (5 min)
+  → SYNC_TESTING_CHECKLIST.md (90 min, paso a paso)
+  → SYNC_TROUBLESHOOTING.md (si hay problemas)
+
+Desarrolladores:
+  → STARTUP_GUIDE.md (30 min, architecture overview)
+  → SYNC_TESTING_GUIDE.md (45 min, 5 tests progresivos)
+  → SYNC_TROUBLESHOOTING.md (referencia rápida)
+
+DevOps / SysAdmins:
+  → STARTUP_GUIDE.md (pasos 2-3, docker-compose)
+  → SYNC_TROUBLESHOOTING.md (especialmente "Performance")
+  → docker-compose.yml y Dockerfile
+
+Nuevos en el Proyecto:
+  → QUICK_START.md (comienza aquí)
+  → STARTUP_GUIDE.md (para detalles)
+  → SYNC_TESTING_GUIDE.md (para entender flujos)
+
+================================================================================
+COMANDOS RÁPIDOS:
+════════════════════════════════════════════════════════════════════════════
+
+Setup Automático (Recomendado):
+  Linux/Mac:   bash scripts/setup-local-env.sh
+  Windows:     .\scripts\setup-local-env.ps1
+
+Ejecutar Tests:
+  bash scripts/test-sync-flow.sh
+
+Ver Logs en Vivo:
+  docker-compose logs -f sync
+
+Verificar Status:
+  docker-compose ps
+
+Conectar a MySQL:
+  mysql -h 127.0.0.1 -P 3309 -u root -proot agro
+
+Verificar DynamoDB:
+  aws dynamodb list-tables \
+    --endpoint-url http://localhost:4566 --region us-east-1
+
+================================================================================
+SERVICIOS DISPONIBLES DESPUÉS DEL SETUP:
+════════════════════════════════════════════════════════════════════════════
+
+MySQL
+  Host: 127.0.0.1
+  Puerto: 3309
+  Usuario: root
+  Contraseña: root
+  Base de datos: agro
+
+API REST
+  URL: http://localhost:8088
+  Health: http://localhost:8088/health
+
+LocalStack (Mock AWS)
+  Endpoint: http://localhost:4566
+  Servicios: S3, DynamoDB, SQS
+  S3 Bucket: agro-sentinel-bucket
+  DynamoDB Tables: monitoring_producciones, monitoring_escenas
+  SQS Queue: agro-sentinel-jobs
+
+Docker Containers
+  - go-agro-sentinel-mysql (MySQL)
+  - go-agro-sentinel-localstack (AWS Mock)
+  - go-agro-sentinel-api (API REST)
+  - go-agro-sentinel-worker (Job Processor)
+  - go-agro-sentinel-sync (DynamoDB Sync)
+
+================================================================================
+PRÓXIMOS PASOS:
+════════════════════════════════════════════════════════════════════════════
+
+1. Lee una de las guías según tu rol (arriba)
+2. Ejecuta el setup (automático o manual)
+3. Realiza los tests
+4. Si hay problemas, consulta SYNC_TROUBLESHOOTING.md
+5. Commit de cambios cuando todo funcione
+
+================================================================================
+ARCHIVOS NUEVOS EN RAÍZ:
+════════════════════════════════════════════════════════════════════════════
+
+QUICK_START.md
+STARTUP_GUIDE.md
+SYNC_TESTING_GUIDE.md
+SYNC_TESTING_CHECKLIST.md
+SYNC_TROUBLESHOOTING.md
+GUIAS_CREADAS.md
+FILES_CREATED.txt
+
+================================================================================
+ARCHIVOS NUEVOS EN scripts/:
+════════════════════════════════════════════════════════════════════════════
+
+setup-local-env.sh
+setup-local-env.ps1
+test-sync-flow.sh
+
+================================================================================
+TAMAÑO TOTAL DE DOCUMENTACIÓN:
+════════════════════════════════════════════════════════════════════════════
+
+Markdown:
+  QUICK_START.md..................7.7 KB
+  STARTUP_GUIDE.md...............15.0 KB
+  SYNC_TESTING_GUIDE.md..........19.0 KB
+  SYNC_TESTING_CHECKLIST.md......12.0 KB
+  SYNC_TROUBLESHOOTING.md........18.0 KB
+  GUIAS_CREADAS.md................8.0 KB
+  ────────────────────────────────────
+  Total Documentación............79.7 KB
+
+Scripts:
+  setup-local-env.sh.............13.0 KB
+  setup-local-env.ps1............14.0 KB
+  test-sync-flow.sh..............13.0 KB
+  ────────────────────────────────────
+  Total Scripts..................40.0 KB
+
+Total Creado....................119.7 KB
+
+================================================================================
+VALIDACIÓN:
+════════════════════════════════════════════════════════════════════════════
+
+Todos los archivos incluyen:
+  ✓ Tabla de contenidos
+  ✓ Instrucciones paso a paso
+  ✓ Comandos listos para copiar
+  ✓ Resultado esperado documentado
+  ✓ Troubleshooting
+  ✓ Secciones específicas por SO
+
+Scripts:
+  ✓ Ejecutables (chmod +x)
+  ✓ Manejo de errores
+  ✓ Colores y feedback visual
+  ✓ Verificaciones en cada paso
+  ✓ Salida clara y estructurada
+
+================================================================================
+NOTAS IMPORTANTES:
+════════════════════════════════════════════════════════════════════════════
+
+1. Docker debe estar instalado y corriendo
+2. Si está en Windows, usar PowerShell para scripts .ps1
+3. Si está en Linux/Mac, usar bash para scripts .sh
+4. Los scripts son interactivos (piden confirmación)
+5. Puedes saltear pasos con flags (-SkipCleanup, -SkipBuild, -LoadTestData)
+6. Los tests usan IDs de prueba (501-506) para no interferir con datos reales
+7. Todos los servicios se levantan en localhost
+8. Puertos: MySQL 3309, LocalStack 4566, API 8088
+
+================================================================================
+SOPORTE:
+════════════════════════════════════════════════════════════════════════════
+
+Problema con setup?
+  → Ver STARTUP_GUIDE.md paso a paso
+
+Problema con sincronización?
+  → Ver SYNC_TESTING_GUIDE.md para entender flujo
+  → Ver SYNC_TROUBLESHOOTING.md para soluciones
+
+Quieres testing exhaustivo?
+  → Usa SYNC_TESTING_CHECKLIST.md (interactivo)
+
+No funciona nada?
+  → Consulta SYNC_TROUBLESHOOTING.md sección "Verificación Final"
+
+================================================================================
+
+Documentación creada: 2026-09-04
+Proyecto: Agro Sentinel Worker
+Ruta: C:\xampp\htdocs\WEB\clientes\DRH\go-agro-sentinel-worker
+
+================================================================================

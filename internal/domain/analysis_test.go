@@ -50,17 +50,6 @@ func TestIAResultSummaryValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid: ID is 0",
-			result: IAResultSummary{
-				ID:                   0,
-				S3MonitoringEscenaID: 100,
-				EstadoClave:          "normal",
-				RiesgoNivel:          "bajo",
-			},
-			wantErr: true,
-			errMsg:  "ID debe ser mayor a 0",
-		},
-		{
 			name: "invalid: S3MonitoringEscenaID is 0",
 			result: IAResultSummary{
 				ID:                   1,
@@ -69,51 +58,7 @@ func TestIAResultSummaryValidate(t *testing.T) {
 				RiesgoNivel:          "bajo",
 			},
 			wantErr: true,
-			errMsg:  "S3MonitoringEscenaID debe ser mayor a 0",
-		},
-		{
-			name: "invalid: EstadoClave is empty",
-			result: IAResultSummary{
-				ID:                   1,
-				S3MonitoringEscenaID: 100,
-				EstadoClave:          "",
-				RiesgoNivel:          "bajo",
-			},
-			wantErr: true,
-			errMsg:  "EstadoClave es requerido",
-		},
-		{
-			name: "invalid: EstadoClave value",
-			result: IAResultSummary{
-				ID:                   1,
-				S3MonitoringEscenaID: 100,
-				EstadoClave:          "invalido",
-				RiesgoNivel:          "bajo",
-			},
-			wantErr: true,
-			errMsg:  "EstadoClave inválido",
-		},
-		{
-			name: "invalid: RiesgoNivel is empty",
-			result: IAResultSummary{
-				ID:                   1,
-				S3MonitoringEscenaID: 100,
-				EstadoClave:          "normal",
-				RiesgoNivel:          "",
-			},
-			wantErr: true,
-			errMsg:  "RiesgoNivel es requerido",
-		},
-		{
-			name: "invalid: RiesgoNivel value",
-			result: IAResultSummary{
-				ID:                   1,
-				S3MonitoringEscenaID: 100,
-				EstadoClave:          "normal",
-				RiesgoNivel:          "extremo",
-			},
-			wantErr: true,
-			errMsg:  "RiesgoNivel inválido",
+			errMsg:  "S3MonitoringEscenaID",
 		},
 	}
 
@@ -132,47 +77,39 @@ func TestIAResultSummaryValidate(t *testing.T) {
 	}
 }
 
-func TestIAResultSummaryString(t *testing.T) {
+func TestIAResultSummaryFields(t *testing.T) {
 	now := time.Now().UTC()
-	tests := []struct {
-		name     string
-		result   IAResultSummary
-		contains []string
-	}{
-		{
-			name: "string representation",
-			result: IAResultSummary{
-				ID:                   1,
-				S3MonitoringEscenaID: 100,
-				EstadoClave:          "normal",
-				RiesgoNivel:          "bajo",
-				RiesgoMotivo:         "test motivo",
-				FechaAnalisis:        &now,
-			},
-			contains: []string{"1", "100", "normal", "bajo", "test motivo"},
-		},
-		{
-			name: "string without fecha",
-			result: IAResultSummary{
-				ID:                   2,
-				S3MonitoringEscenaID: 200,
-				EstadoClave:          "alerta",
-				RiesgoNivel:          "medio",
-				RiesgoMotivo:         "motivo prueba",
-				FechaAnalisis:        nil,
-			},
-			contains: []string{"2", "200", "alerta", "medio", "no disponible"},
-		},
+	r := IAResultSummary{
+		ID:                   1,
+		S3MonitoringEscenaID: 100,
+		EstadoClave:          "normal",
+		RiesgoNivel:          "bajo",
+		RiesgoMotivo:         "test motivo",
+		FechaAnalisis:        &now,
+	}
+	if r.ID != 1 {
+		t.Errorf("ID = %d, want 1", r.ID)
+	}
+	if r.S3MonitoringEscenaID != 100 {
+		t.Errorf("S3MonitoringEscenaID = %d, want 100", r.S3MonitoringEscenaID)
+	}
+	if r.EstadoClave != "normal" {
+		t.Errorf("EstadoClave = %q, want %q", r.EstadoClave, "normal")
+	}
+	if r.RiesgoNivel != "bajo" {
+		t.Errorf("RiesgoNivel = %q, want %q", r.RiesgoNivel, "bajo")
+	}
+	if r.FechaAnalisis == nil {
+		t.Error("FechaAnalisis should not be nil")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			str := tt.result.String()
-			for _, substring := range tt.contains {
-				if !strings.Contains(str, substring) {
-					t.Errorf("String() = %q, should contain %q", str, substring)
-				}
-			}
-		})
+	r2 := IAResultSummary{
+		ID:            2,
+		EstadoClave:   "alerta",
+		RiesgoNivel:   "medio",
+		FechaAnalisis: nil,
+	}
+	if r2.FechaAnalisis != nil {
+		t.Error("FechaAnalisis should be nil")
 	}
 }

@@ -12,8 +12,9 @@
 1. [Daily Operations](#daily-operations)
 2. [Monitoring & Alerting](#monitoring--alerting)
 3. [Performance Tuning](#performance-tuning)
-4. [Disaster Recovery](#disaster-recovery)
-5. [Escalation Procedures](#escalation-procedures)
+4. [Alcance de un ciclo del worker](#alcance-de-un-ciclo-del-worker)
+5. [Disaster Recovery](#disaster-recovery)
+6. [Escalation Procedures](#escalation-procedures)
 
 ---
 
@@ -443,6 +444,129 @@ dynamodb:
   batch_write_capacity: 25
   batch_read_capacity: 100
 ```
+
+---
+
+## Alcance de un ciclo del worker
+
+Qué escenas toca "Procesar todo" (`ProcessAllPending`), y por qué el número que
+muestra la barra de progreso no es igual al de escenas pendientes.
+
+### La regla: desde el primer hueco de cada producción
+
+Los `params.json` arrastran una **cadena histórica**: cada escena resume el
+estado del cultivo apoyándose en las anteriores. Por eso, rellenar una escena
+faltante invalida las **posteriores** de esa producción, nunca las previas.
+
+Para cada `scene_name` con trabajo pendiente en alguna producción, un ciclo
+toma:
+
+| Estado de la escena | ¿Entra? |
+|---|---|
+| `PENDING`, `FAILED`, `PROCESSING` | Siempre — es trabajo por hacer |
+| `COMPLETED` en o después del primer hueco de su producción | Sí, a regenerar `params` + `ia_req` |
+| `COMPLETED` anterior al primer hueco | **No** — su cadena no cambió |
+| Cualquiera, en una producción sin huecos | **No** — la producción no participa |
+
+Con escenas A..H en orden cronológico y cinco producciones:
+
+| Producción | Estado | Qué se toma |
+|---|---|---|
+| 1 | Completa A..H | **Nada.** Nunca entra |
+| 2 | Tiene A,B | C en adelante |
+| 3 | Tiene A..D y además G,H | E,F como trabajo; G,H se regeneran |
+| 4 | Tiene A..F | G en adelante |
+| 5 | Sin ninguna | Todas, A..H |
+
+Implementado en `SceneRepo.ListAllBySceneName` mediante `sceneNeedsWork`, que
+compara la fecha de cada escena contra `MIN(fecha)` de las pendientes de su
+propia producción. Ese `MIN` es `NULL` cuando la producción está al corriente, y
+como toda comparación contra `NULL` es falsa, esas producciones quedan fuera
+solas. Verificado por `TestListAllBySceneName_OnlyFromFirstGapOnward`, que monta
+exactamente el escenario de la tabla:
+
+```bash
+MYSQL_TEST_DSN="root:root@tcp(localhost:3309)/agro" go test ./internal/infrastructure/database/ -run GapOnward -v
+```
+
+### Por qué el total no coincide con "escenas pendientes"
+
+La barra reporta `CountScenesToProcess`, que cuenta **filas a recorrer**:
+pendientes **más** las completadas que se regeneran. Si la UI dice 289
+pendientes y la barra 661, la diferencia son regeneraciones.
+
+**Las dos consultas deben usar los mismos filtros.** `CountScenesToProcess` y
+`ListAllBySceneName` comparten los fragmentos SQL `PendingStatuses`,
+`processableStatuses` y `sceneNeedsWork` en `scene_repo.go` precisamente por
+eso: si se desalinean, la barra nunca llega al 100%. Ya pasó — el total incluía
+filas que el worker no tocaba.
+
+### Definición de "pendiente"
+
+`PendingStatuses` = `PENDING`, `FAILED`, `PROCESSING`.
+
+- `FAILED` cuenta igual que `PENDING`: el worker la reintenta.
+- `PROCESSING` se incluye porque `ProcessAllPending` resetea las que quedaron
+  colgadas antes de arrancar.
+- `SKIPPED` queda fuera: el loop la salta, así que contarla infla el total.
+
+Esta misma definición la usa `GetStatsForActive` para `scenes_pendientes`, que
+alimenta las tarjetas, los encabezados agrupados, el KPI del dashboard y el
+indicador de pipeline. Contar solo `PENDING` hacía que una producción con
+escenas fallidas apareciera al día en toda la UI.
+
+### Coste de un ciclo, y el gasto de IA
+
+Cada escena regenerada descarga su `multiband.tif` de S3 y recalcula
+estadísticas con GDAL. Regenerar escenas anteriores al hueco —lo que ocurría
+antes del filtro por fecha— era ancho de banda, CPU y tiempo gastados para
+reescribir un `params.json` idéntico.
+
+**El regen no llama al servicio de IA.** `regenerateParamsAndIA` solo invoca
+`generateIARequest`, que construye el payload `ia_req.json`; el análisis lo
+dispara `maybeRunIA`, que se ejecuta únicamente desde `ProcessScene`, es decir
+sobre escenas `PENDING`/`FAILED`. Así que un ciclo con muchas regeneraciones no
+consume tokens por sí mismo.
+
+Dicho eso, el alcance del ciclo **sí determina el gasto de IA en dos sentidos**,
+y conviene tenerlo presente:
+
+1. `maybeRunIA` corre hoy con `dryRun = true` en `worker.go` y no persiste
+   resultados. Al ponerlo en `false`, cada escena que pase por `ProcessScene`
+   con `ia_auto = 1` y `usable = 1` generará un análisis de pago. El número de
+   escenas que un ciclo procesa pasa entonces a ser directamente el coste.
+2. Un polígono mal trazado infla el gasto de forma silenciosa: mueve la
+   nubosidad medida dentro del área y con ello qué escenas quedan `usable`, que
+   es el universo exacto al que se le aplica IA. Revisar el polígono en el
+   editor (`/produccion/:id/poligono`) antes de activar `ia_auto` es la forma
+   más barata de no pagar análisis sobre área equivocada.
+
+**Antes de activar `ia_auto` de forma masiva**, mide el universo real:
+
+```sql
+SELECT COUNT(*) FROM s3_monitoring_escenas e JOIN s3_monitoring_producciones p ON e.s3_monitoring_produccion_id = p.s3_monitoring_produccion_id WHERE p.monitoring = 1 AND p.ia_auto = 1 AND e.usable = 1 AND e.ia_exists = 0;
+```
+
+Y para ver cuánto de un ciclo es trabajo nuevo frente a regeneración:
+
+```sql
+SELECT SUM(e.status IN ('PENDING','FAILED','PROCESSING')) AS pendientes, SUM(e.status = 'COMPLETED') AS regeneraciones, COUNT(*) AS total FROM s3_monitoring_escenas e JOIN s3_monitoring_producciones p ON e.s3_monitoring_produccion_id = p.s3_monitoring_produccion_id WHERE p.monitoring = 1 AND e.status IN ('PENDING','FAILED','PROCESSING','COMPLETED') AND e.scene_name IN (SELECT DISTINCT e2.scene_name FROM s3_monitoring_escenas e2 JOIN s3_monitoring_producciones p2 ON e2.s3_monitoring_produccion_id = p2.s3_monitoring_produccion_id WHERE e2.status IN ('PENDING','FAILED','PROCESSING') AND p2.monitoring = 1) AND (e.status IN ('PENDING','FAILED','PROCESSING') OR e.fecha >= (SELECT MIN(ep.fecha) FROM s3_monitoring_escenas ep WHERE ep.s3_monitoring_produccion_id = e.s3_monitoring_produccion_id AND ep.status IN ('PENDING','FAILED','PROCESSING')));
+```
+
+### Reuso de multiband entre producciones
+
+Cuando varias producciones comparten un `scene_name` y el tile de una contiene
+el polígono de otra, el worker descarga el `multiband.tif` existente en lugar de
+volver a bajar las bandas COG. La escena queda con `multiband_ref_escena_id`
+apuntando al origen.
+
+Consecuencia para visualización: **el extent real de las imágenes es el tile de
+la producción de origen**, no el de la que se está viendo. El worker reproyecta
+los PNG a EPSG:4326 recortados a ese extent, y `EscenaView` los posiciona con el
+mismo rectángulo. Si esos dos criterios se separan, las imágenes aparecen
+desplazadas — el `multiband.tif` no, porque `GeoRasterLayer` lee su
+georreferencia embebida y siempre acierta. **Al depurar un desfase de imágenes,
+el multiband es la referencia de verdad.**
 
 ---
 

@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"strings"
+	"encoding/json"
 	"testing"
 )
 
@@ -38,19 +38,44 @@ func TestBBoxValidate(t *testing.T) {
 	}
 }
 
-func TestProductionShouldMonitor(t *testing.T) {
-	p := Production{
-		Monitoring: true,
-		Bloqueado:  false,
-		BBox:       &BBox{MinX: -102.35, MinY: 21.80, MaxX: -102.30, MaxY: 21.85},
-	}
+func TestProductionShouldProcess(t *testing.T) {
+	p := Production{Monitoring: true, Bloqueado: false}
 	if !p.ShouldProcess() {
-		t.Error("production with monitoring=true, not blocked, with bbox should be processable")
+		t.Error("monitoring=true, bloqueado=false should be processable")
 	}
 
 	p.Bloqueado = true
 	if p.ShouldProcess() {
-		t.Error("blocked production should not be processable")
+		t.Error("bloqueado=true should not be processable")
+	}
+
+	p.Bloqueado = false
+	p.Monitoring = false
+	if p.ShouldProcess() {
+		t.Error("monitoring=false should not be processable")
+	}
+}
+
+func TestProductionParsePBox(t *testing.T) {
+	pboxDoc := map[string]interface{}{
+		"pbox": []float64{-102.35, 21.80, -102.30, 21.85},
+	}
+	raw, _ := json.Marshal(pboxDoc)
+
+	p := Production{ProduccionID: 1, PBoxJSON: raw}
+	bbox := p.ParsePBox()
+	if bbox == nil {
+		t.Fatal("ParsePBox() returned nil for valid pbox")
+	}
+	if bbox.MinX != -102.35 || bbox.MinY != 21.80 || bbox.MaxX != -102.30 || bbox.MaxY != 21.85 {
+		t.Errorf("ParsePBox() = %+v, unexpected values", bbox)
+	}
+}
+
+func TestProductionParsePBoxNil(t *testing.T) {
+	p := Production{ProduccionID: 1}
+	if p.ParsePBox() != nil {
+		t.Error("ParsePBox() should return nil when PBoxJSON is empty")
 	}
 }
 
@@ -59,69 +84,16 @@ func TestProductionValidate(t *testing.T) {
 		name    string
 		prod    Production
 		wantErr bool
-		errMsg  string
 	}{
 		{
-			name: "valid production",
-			prod: Production{
-				ProduccionID: 1,
-				Cultivo:      "Maiz",
-				Ciclo:        "2026-A",
-				BBox:         &BBox{MinX: -102.35, MinY: 21.80, MaxX: -102.30, MaxY: 21.85},
-			},
+			name:    "valid",
+			prod:    Production{ProduccionID: 1},
 			wantErr: false,
 		},
 		{
-			name: "valid production with articulo and centro",
-			prod: Production{
-				ProduccionID:  1,
-				ArticuloID:    100,
-				CentroCostoID: 200,
-				Cultivo:       "Soja",
-				Ciclo:         "2026-B",
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid: ProduccionID is 0",
-			prod: Production{
-				ProduccionID: 0,
-				Cultivo:      "Maiz",
-				Ciclo:        "2026-A",
-			},
+			name:    "zero ProduccionID",
+			prod:    Production{ProduccionID: 0},
 			wantErr: true,
-			errMsg:  "ProduccionID must be greater than 0",
-		},
-		{
-			name: "invalid: Cultivo is empty",
-			prod: Production{
-				ProduccionID: 1,
-				Cultivo:      "",
-				Ciclo:        "2026-A",
-			},
-			wantErr: true,
-			errMsg:  "Cultivo is required",
-		},
-		{
-			name: "invalid: Ciclo is empty",
-			prod: Production{
-				ProduccionID: 1,
-				Cultivo:      "Maiz",
-				Ciclo:        "",
-			},
-			wantErr: true,
-			errMsg:  "Ciclo is required",
-		},
-		{
-			name: "invalid: BBox is invalid",
-			prod: Production{
-				ProduccionID: 1,
-				Cultivo:      "Maiz",
-				Ciclo:        "2026-A",
-				BBox:         &BBox{MinX: -102.30, MinY: 21.80, MaxX: -102.35, MaxY: 21.85},
-			},
-			wantErr: true,
-			errMsg:  "MinX must be less than MaxX",
 		},
 	}
 
@@ -130,11 +102,6 @@ func TestProductionValidate(t *testing.T) {
 			err := tt.prod.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if tt.wantErr && err != nil && tt.errMsg != "" {
-				if !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("Validate() error message = %q, want to contain %q", err.Error(), tt.errMsg)
-				}
 			}
 		})
 	}

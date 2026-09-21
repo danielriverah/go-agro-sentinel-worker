@@ -1,56 +1,251 @@
 [
-  {
-    "produccion_id": 12345,
-    "activa": true,
-    "cultivo": "maiz",
-    "ciclo": "2026-A",
-    "fecha_plantacion": "2026-01-15",
-    "dias_produccion": 120,
-    "articulo_id": 5001,
-    "centro_costo_id": 101,
-    "nombre_rancho": "Rancho El Remanso"
-  },
-  {
-    "produccion_id": 12346,
-    "activa": true,
-    "cultivo": "soja",
-    "ciclo": "2026-A",
-    "fecha_plantacion": "2026-01-20",
-    "dias_produccion": 140,
-    "articulo_id": 5002,
-    "centro_costo_id": 102,
-    "nombre_rancho": "Finca La Esperanza"
-  },
-  {
-    "produccion_id": 12347,
-    "activa": true,
-    "cultivo": "trigo",
-    "ciclo": "2026-B",
-    "fecha_plantacion": "2026-02-01",
-    "dias_produccion": 90,
-    "articulo_id": 5003,
-    "centro_costo_id": 101,
-    "nombre_rancho": "Rancho El Remanso"
-  },
-  {
-    "produccion_id": 12348,
-    "activa": false,
-    "cultivo": "algodon",
-    "ciclo": "2025-B",
-    "fecha_plantacion": "2025-08-15",
-    "dias_produccion": 150,
-    "articulo_id": 5004,
-    "centro_costo_id": 103
-  },
-  {
-    "produccion_id": 12349,
-    "activa": true,
-    "cultivo": "maiz",
-    "ciclo": "2026-A",
-    "fecha_plantacion": "2026-01-25",
-    "dias_produccion": 120,
-    "articulo_id": 5005,
-    "centro_costo_id": 104,
-    "nombre_rancho": "Campos del Amanecer"
-  }
+    {
+        "produccion_id": "2075",
+        "folio": "CSJ2601-17-A",
+        "dias_max_monitoreo": "110",
+        "estatus": "OPEN",
+        "fecha_siembra": "2026-06-03",
+        "pbox": {
+            "min_lon": {
+                "N": "-100.93089166667"
+            },
+            "max_lat": {
+                "N": "21.1068"
+            },
+            "puntos_bbox": {
+                "L": [
+                    {
+                        "L": [
+                            {
+                                "N": "21.10535"
+                            },
+                            {
+                                "N": "-100.93089166667"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.10535"
+                            },
+                            {
+                                "N": "-100.92730277778"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.1068"
+                            },
+                            {
+                                "N": "-100.92730277778"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.1068"
+                            },
+                            {
+                                "N": "-100.93089166667"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "min_lat": {
+                "N": "21.10535"
+            },
+            "max_lon": {
+                "N": "-100.92730277778"
+            },
+            "pbox": {
+                "L": [
+                    {
+                        "N": "-100.93089166667"
+                    },
+                    {
+                        "N": "21.10535"
+                    },
+                    {
+                        "N": "-100.92730277778"
+                    },
+                    {
+                        "N": "21.1068"
+                    }
+                ]
+            }
+        },
+        "ultima_fecha": "",
+        "ultima_fecha_consultada": "2026-08-31"
+    },
+    {
+        "produccion_id": "2061",
+        "folio": "CSJ2601-27",
+        "dias_max_monitoreo": "95",
+        "estatus": "OPEN",
+        "fecha_siembra": "2026-06-03",
+        "pbox": {
+            "min_lon": {
+                "N": "-100.92220910417"
+            },
+            "max_lat": {
+                "N": "21.109000595606"
+            },
+            "puntos_bbox": {
+                "L": [
+                    {
+                        "L": [
+                            {
+                                "N": "21.107385962089"
+                            },
+                            {
+                                "N": "-100.92220910417"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.107385962089"
+                            },
+                            {
+                                "N": "-100.91837030456"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.109000595606"
+                            },
+                            {
+                                "N": "-100.91837030456"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.109000595606"
+                            },
+                            {
+                                "N": "-100.92220910417"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "min_lat": {
+                "N": "21.107385962089"
+            },
+            "max_lon": {
+                "N": "-100.91837030456"
+            },
+            "pbox": {
+                "L": [
+                    {
+                        "N": "-100.92220910417"
+                    },
+                    {
+                        "N": "21.107385962089"
+                    },
+                    {
+                        "N": "-100.91837030456"
+                    },
+                    {
+                        "N": "21.109000595606"
+                    }
+                ]
+            }
+        },
+        "ultima_fecha": "",
+        "ultima_fecha_consultada": "2026-09-03"
+    },
+    {
+        "produccion_id": "2077",
+        "folio": "CSJ2601-20",
+        "dias_max_monitoreo": "125",
+        "estatus": "OPEN",
+        "fecha_siembra": "2026-06-03",
+        "pbox": {
+            "min_lon": {
+                "N": "-100.930025"
+            },
+            "max_lat": {
+                "N": "21.107847390111"
+            },
+            "puntos_bbox": {
+                "L": [
+                    {
+                        "L": [
+                            {
+                                "N": "21.106438888889"
+                            },
+                            {
+                                "N": "-100.930025"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.106438888889"
+                            },
+                            {
+                                "N": "-100.92664836905"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.107847390111"
+                            },
+                            {
+                                "N": "-100.92664836905"
+                            }
+                        ]
+                    },
+                    {
+                        "L": [
+                            {
+                                "N": "21.107847390111"
+                            },
+                            {
+                                "N": "-100.930025"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "min_lat": {
+                "N": "21.106438888889"
+            },
+            "max_lon": {
+                "N": "-100.92664836905"
+            },
+            "pbox": {
+                "L": [
+                    {
+                        "N": "-100.930025"
+                    },
+                    {
+                        "N": "21.106438888889"
+                    },
+                    {
+                        "N": "-100.92664836905"
+                    },
+                    {
+                        "N": "21.107847390111"
+                    }
+                ]
+            }
+        },
+        "ultima_fecha": "",
+        "ultima_fecha_consultada": "2026-08-31"
+    }
 ]

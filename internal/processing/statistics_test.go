@@ -26,7 +26,7 @@ func (m *statsMockExecutor) Run(ctx context.Context, command string, args []stri
 }
 
 func tenBandStatsJSON() string {
-	const bandTmpl = `{"band":%d,"computedStatistics":{"minimum":0.0,"maximum":1.0,"mean":0.5,"stdDev":0.1},"histogram":{"count":10,"min":0.0,"max":1.0,"buckets":[1,1,1,1,1,1,1,1,1,1]}}`
+	const bandTmpl = `{"band":%d,"minimum":0.0,"maximum":1.0,"mean":0.5,"stdDev":0.1,"histogram":{"count":10,"min":0.0,"max":1.0,"buckets":[1,1,1,1,1,1,1,1,1,1]}}`
 	out := `{"bands":[`
 	for i := 1; i <= 10; i++ {
 		if i > 1 {
@@ -95,7 +95,7 @@ func TestCalculateBandStatistics_NoBands(t *testing.T) {
 }
 
 func TestCalculateIndexStatistics(t *testing.T) {
-	singleBand := `{"bands":[{"band":1,"computedStatistics":{"minimum":-1.0,"maximum":1.0,"mean":0.72,"stdDev":0.08},"histogram":{"count":8,"min":-1.0,"max":1.0,"buckets":[0,0,0,1,5,1,1,0]}}]}`
+	singleBand := `{"bands":[{"band":1,"minimum":-1.0,"maximum":1.0,"mean":0.72,"stdDev":0.08,"histogram":{"count":8,"min":-1.0,"max":1.0,"buckets":[0,0,0,1,5,1,1,0]}}]}`
 	mock := &statsMockExecutor{stdout: singleBand}
 
 	indices := []IndexDefinition{

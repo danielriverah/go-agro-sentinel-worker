@@ -36,13 +36,13 @@ func TestHealthHandler(t *testing.T) {
 // --- mocks ---
 
 type mockProductionRepo struct {
-	listActive     []*domain.Production
-	listActiveErr  error
-	byID           map[int64]*domain.Production
-	getErr         error
-	desbloquearErr error
-	desbloqueado   bool
-	desbloqUsuario string
+	listActive    []*domain.Production
+	listActiveErr error
+	byID          map[int64]*domain.Production
+	getErr        error
+	setBloqueado  bool
+	setBloqID     int64
+	setBloqErr    error
 }
 
 func (m *mockProductionRepo) ListActive(ctx context.Context) ([]*domain.Production, error) {
@@ -56,45 +56,86 @@ func (m *mockProductionRepo) GetByProduccionID(ctx context.Context, produccionID
 	return m.byID[produccionID], nil
 }
 
-func (m *mockProductionRepo) Desbloquear(ctx context.Context, produccionID int64, usuario string) error {
-	if m.desbloquearErr != nil {
-		return m.desbloquearErr
+func (m *mockProductionRepo) GetByMonitoringID(ctx context.Context, monitoringID uint) (*domain.Production, error) {
+	return nil, nil
+}
+
+// GetByID looks up by the monitoring PK. The fixtures are keyed by ERP
+// produccion_id, so scan for the matching record.
+func (m *mockProductionRepo) GetByID(ctx context.Context, id uint) (*domain.Production, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
 	}
-	m.desbloqueado = true
-	m.desbloqUsuario = usuario
+	for _, p := range m.byID {
+		if p != nil && p.ID == id {
+			return p, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockProductionRepo) GetStatsForActive(ctx context.Context) (map[uint]*domain.ProductionStats, error) {
+	return map[uint]*domain.ProductionStats{}, nil
+}
+
+func (m *mockProductionRepo) UpdateIAuto(ctx context.Context, produccionID int64, iaAuto bool) error {
+	if p, ok := m.byID[produccionID]; ok && p != nil {
+		p.IAuto = iaAuto
+	}
+	return nil
+}
+
+func (m *mockProductionRepo) UpdatePolygon(ctx context.Context, monitoringID uint, poligono, pbox []byte) error {
+	for _, p := range m.byID {
+		if p != nil && p.ID == monitoringID {
+			p.PoligonoJSON = poligono
+			p.PBoxJSON = pbox
+			p.PolygonBBoxJSON = pbox
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *mockProductionRepo) SetBloqueado(ctx context.Context, produccionID int64, bloqueado bool) error {
+	if m.setBloqErr != nil {
+		return m.setBloqErr
+	}
+	m.setBloqueado = bloqueado
+	m.setBloqID = produccionID
 	return nil
 }
 
 type mockSceneRepo struct {
-	byProduccion map[int64][]*domain.Scene
+	byMonitoring map[uint][]*domain.Scene
 	err          error
 }
 
-func (m *mockSceneRepo) ListByProduccion(ctx context.Context, produccionID int64) ([]*domain.Scene, error) {
+func (m *mockSceneRepo) ListByMonitoringProduccion(ctx context.Context, monitoringProduccionID uint) ([]*domain.Scene, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	return m.byProduccion[produccionID], nil
+	return m.byMonitoring[monitoringProduccionID], nil
 }
 
-func (m *mockSceneRepo) GetByID(ctx context.Context, id int64) (*domain.Scene, error) {
+func (m *mockSceneRepo) GetByID(ctx context.Context, id uint64) (*domain.Scene, error) {
 	return nil, nil
 }
 
 type mockFileRepo struct {
-	byType map[int64]*domain.SceneFile
-	err    error
+	byEscena map[uint64]*domain.SceneFile
+	err      error
 }
 
-func (m *mockFileRepo) ListByEscena(ctx context.Context, escenaID int64) ([]*domain.SceneFile, error) {
+func (m *mockFileRepo) ListByEscena(ctx context.Context, escenaID uint64) ([]*domain.SceneFile, error) {
 	return nil, nil
 }
 
-func (m *mockFileRepo) GetByType(ctx context.Context, escenaID int64, fileType domain.FileType) (*domain.SceneFile, error) {
+func (m *mockFileRepo) GetByTipo(ctx context.Context, escenaID uint64, tipo string) (*domain.SceneFile, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	return m.byType[escenaID], nil
+	return m.byEscena[escenaID], nil
 }
 
 type mockPresigner struct {
@@ -119,6 +160,10 @@ func (m *mockSyncer) RunOnce(ctx context.Context) error {
 		close(m.called)
 	}
 	return m.err
+}
+
+func (m *mockSyncer) Status() any {
+	return nil
 }
 
 type mockDBPinger struct {
@@ -159,8 +204,8 @@ func (m *mockGDALExecutor) Run(ctx context.Context) (string, error) {
 func TestListProducciones(t *testing.T) {
 	prodRepo := &mockProductionRepo{
 		listActive: []*domain.Production{
-			{ProduccionID: 1, Cultivo: "soja"},
-			{ProduccionID: 2, Cultivo: "maiz"},
+			{ProduccionID: 1, Cosecha: "soja"},
+			{ProduccionID: 2, Cosecha: "maiz"},
 		},
 	}
 	h := &Handlers{Productions: prodRepo}
@@ -189,12 +234,12 @@ func TestListProducciones(t *testing.T) {
 func TestGetProduccion(t *testing.T) {
 	prodRepo := &mockProductionRepo{
 		byID: map[int64]*domain.Production{
-			42: {ProduccionID: 42, Cultivo: "soja"},
+			42: {ID: 42, ProduccionID: 42, Cosecha: "soja"},
 		},
 	}
 	sceneRepo := &mockSceneRepo{
-		byProduccion: map[int64][]*domain.Scene{
-			42: {{ID: 1, ProduccionID: 42, SceneID: "s1"}},
+		byMonitoring: map[uint][]*domain.Scene{
+			42: {{ID: 1, MonitoringProduccionID: 42, SceneName: "s1"}},
 		},
 	}
 	h := &Handlers{Productions: prodRepo, Scenes: sceneRepo}
@@ -241,10 +286,13 @@ func TestGetProduccionNotFound(t *testing.T) {
 	}
 }
 
+// The {id} in the URL is the monitoring PK, while SetBloqueado takes the ERP
+// produccion_id. The fixture keeps them different on purpose so a regression
+// that mixes the two identifiers fails here.
 func TestDesbloquearProduccion(t *testing.T) {
 	prodRepo := &mockProductionRepo{
 		byID: map[int64]*domain.Production{
-			7: {ProduccionID: 7, Bloqueado: false},
+			2007: {ID: 7, ProduccionID: 2007, Bloqueado: true},
 		},
 	}
 	h := &Handlers{Productions: prodRepo}
@@ -259,15 +307,18 @@ func TestDesbloquearProduccion(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	if !prodRepo.desbloqueado {
-		t.Error("expected Desbloquear to be called")
+	if prodRepo.setBloqueado != false {
+		t.Error("expected SetBloqueado(false) to be called")
+	}
+	if prodRepo.setBloqID != 2007 {
+		t.Errorf("SetBloqueado got produccion_id %d, want the ERP id 2007", prodRepo.setBloqID)
 	}
 }
 
 func TestGetEscenaArchivo(t *testing.T) {
 	fileRepo := &mockFileRepo{
-		byType: map[int64]*domain.SceneFile{
-			5: {ID: 1, EscenaID: 5, FileType: domain.FileNDVI, FileName: "ndvi.tif", S3Key: "key", S3Bucket: "bucket"},
+		byEscena: map[uint64]*domain.SceneFile{
+			5: {ID: 1, EscenaID: 5, Tipo: "ndvi", S3Key: "key/ndvi.tif", S3Uri: "s3://bucket/key/ndvi.tif"},
 		},
 	}
 	presigner := &mockPresigner{url: "https://example.com/presigned"}
@@ -297,7 +348,7 @@ func TestGetEscenaArchivo(t *testing.T) {
 }
 
 func TestGetEscenaArchivoNotFound(t *testing.T) {
-	h := &Handlers{Files: &mockFileRepo{byType: map[int64]*domain.SceneFile{}}}
+	h := &Handlers{Files: &mockFileRepo{byEscena: map[uint64]*domain.SceneFile{}}}
 
 	req := httptest.NewRequest("GET", "/api/v1/escenas/5/archivos/ndvi", nil)
 	req.SetPathValue("id", "5")

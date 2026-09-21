@@ -44,7 +44,7 @@ func (m *mockExecutor) Run(ctx context.Context, command string, args []string) (
 				outputPath = args[0]
 			}
 		}
-	case "gdal_calc.py":
+	case "gdal_calc.py", "python3":
 		// args include a "--outfile=<path>" flag.
 		for _, a := range args {
 			if strings.HasPrefix(a, "--outfile=") {

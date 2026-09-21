@@ -14,10 +14,10 @@ import (
 // each land-cover category of interest, computed over the same BBOX-cropped
 // SCL raster used for cloud cover.
 type CoverageStats struct {
-	VegetationPct float64
-	SoilPct       float64
-	WaterPct      float64
-	CloudPct      float64
+	VegetationPct float64 `json:"vegetacion_pct"`
+	SoilPct       float64 `json:"suelo_pct"`
+	WaterPct      float64 `json:"agua_pct"`
+	CloudPct      float64 `json:"nube_pct"`
 }
 
 // sclHistogramBuckets is the number of buckets gdalinfo's histogram
@@ -44,7 +44,11 @@ type gdalInfoHistJSON struct {
 // cloud cover percentage (spec formula: classes 3, 8, 9, 10 over all valid
 // pixels, excluding class 0/no-data) along with vegetation/soil/water/cloud
 // coverage percentages for the same area.
-func CalculateCloudCover(ctx context.Context, executor GDALExecutor, sclHref string, bbox domain.BBox, workDir string) (float64, CoverageStats, error) {
+//
+// polygonPath is the path to a GeoJSON file containing the production polygon
+// (written by WritePolygonGeoJSON). When provided, cloud cover is measured
+// only over pixels inside the polygon. Pass "" to measure over the full bbox.
+func CalculateCloudCover(ctx context.Context, executor GDALExecutor, sclHref string, bbox domain.BBox, workDir string, polygonPath string) (float64, CoverageStats, error) {
 	if err := bbox.Validate(); err != nil {
 		return 0, CoverageStats{}, &domain.ProcessingError{
 			Type:    domain.ErrValidation,
@@ -57,17 +61,22 @@ func CalculateCloudCover(ctx context.Context, executor GDALExecutor, sclHref str
 		return 0, CoverageStats{}, &domain.ProcessingError{Type: domain.ErrDisk, Message: "creating work dir", Wrapped: err}
 	}
 
-	warpedPath := filepath.Join(workDir, fmt.Sprintf("%s.tif", domain.BandSCL))
+	warpedPath := filepath.Join(workDir, "scl_cloud.tif")
 	res := fmt.Sprintf("%d", domain.BandSCL.Resolution())
 
 	warpArgs := []string{
 		"-t_srs", TargetSRS,
 		"-te", fmt.Sprintf("%v", bbox.MinX), fmt.Sprintf("%v", bbox.MinY), fmt.Sprintf("%v", bbox.MaxX), fmt.Sprintf("%v", bbox.MaxY),
+		"-te_srs", "EPSG:4326", // tile_bbox is stored in WGS84 (lon/lat degrees)
 		"-tr", res, res,
 		"-r", "near",
-		sclHref,
-		warpedPath,
 	}
+	if polygonPath != "" {
+		// Mask to polygon: pixels outside get nodata (0), preserving SCL class
+		// counts only for the production area.
+		warpArgs = append(warpArgs, "-cutline", polygonPath, "-crop_to_cutline", "-dstnodata", "0")
+	}
+	warpArgs = append(warpArgs, sclHref, warpedPath)
 
 	_, warpStderr, err := executor.Run(ctx, "gdalwarp", warpArgs)
 	if err != nil {
@@ -128,7 +137,7 @@ func CalculateCloudCover(ctx context.Context, executor GDALExecutor, sclHref str
 
 	if totalValid <= 0 {
 		return 0, CoverageStats{}, &domain.ProcessingError{
-			Type:    domain.ErrGDAL,
+			Type:    domain.ErrNoData,
 			Message: "SCL histogram has no valid (non-no-data) pixels",
 		}
 	}

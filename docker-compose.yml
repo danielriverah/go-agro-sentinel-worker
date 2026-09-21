@@ -8,6 +8,10 @@ services:
     restart: always
     ports:
       - "8088:6000"
+    mem_limit: 128m
+    memswap_limit: 128m
+    volumes:
+      - go-agro-sentinel-worker-tmp:/tmp
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
       MYSQL_HOST: go-agro-sentinel-mysql
@@ -17,17 +21,30 @@ services:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+# Rewrites presigned S3 URLs so browsers can reach LocalStack via the host.
+      # Change to your server IP/domain in staging/prod (leave empty for real AWS).
+      S3_PUBLIC_ENDPOINT: http://localhost:4566
+      GOMEMLIMIT: 110MiB
+      # IA Bedrock — valores en .env (nunca en este archivo)
+      IA_AWS_ACCESS_KEY_ID: ${IA_AWS_ACCESS_KEY_ID:-}
+      BEDROCK_API_KEY: ${BEDROCK_API_KEY:-}
+      IA_BEDROCK_MODEL_ID: ${IA_BEDROCK_MODEL_ID:-}
+      IA_BEDROCK_REGION: ${IA_BEDROCK_REGION:-us-east-1}
     depends_on:
       mysql:
         condition: service_healthy
       localstack:
-        condition: service_started
+        condition: service_healthy
 
   worker:
     container_name: go-agro-sentinel-worker
     build: .
-    command: worker
+    command: worker --auto
     restart: always
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - go-agro-sentinel-worker-tmp:/tmp
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
       MYSQL_HOST: go-agro-sentinel-mysql
@@ -38,31 +55,38 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       SQS_QUEUE_URL: http://go-agro-sentinel-localstack:4566/000000000000/agro-sentinel-jobs
+      GOMEMLIMIT: 460MiB
     depends_on:
       mysql:
         condition: service_healthy
       localstack:
-        condition: service_started
+        condition: service_healthy
 
   sync:
     container_name: go-agro-sentinel-sync
     build: .
     command: sync
     restart: always
+    mem_limit: 128m
+    memswap_limit: 128m
+    volumes:
+      - go-agro-sentinel-worker-tmp:/tmp
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
       MYSQL_HOST: go-agro-sentinel-mysql
       MYSQL_USER: root
       MYSQL_PASSWORD: root
+      # S3/SQS usan LocalStack (datos locales)
       AWS_ENDPOINT_URL: http://go-agro-sentinel-localstack:4566
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      GOMEMLIMIT: 110MiB
     depends_on:
       mysql:
         condition: service_healthy
       localstack:
-        condition: service_started
+        condition: service_healthy
 
   mysql:
     container_name: go-agro-sentinel-mysql
@@ -92,7 +116,13 @@ services:
     volumes:
       - go-agro-sentinel-localstack-data:/var/lib/localstack
       - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   go-agro-sentinel-mysql-data:
   go-agro-sentinel-localstack-data:
+  go-agro-sentinel-worker-tmp:

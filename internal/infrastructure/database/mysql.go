@@ -12,7 +12,7 @@ import (
 
 // NewConnection opens a MySQL connection pool using the given configuration.
 func NewConnection(cfg config.MySQLConfig) (*sql.DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci",
 		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 
 	db, err := sql.Open("mysql", dsn)
@@ -20,8 +20,8 @@ func NewConnection(cfg config.MySQLConfig) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening mysql connection: %w", err)
 	}
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(10)
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.Ping(); err != nil {

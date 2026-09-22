@@ -76,7 +76,9 @@ WHERE up.usuario_id = ?`
 // ObtenerPermisosCacheados returns cached permissions or nil.
 func (r *PermissionRepo) ObtenerPermisosCacheados(usuarioID int64) *auth.PermisosUsuario {
 	if v, ok := r.cache.Load(usuarioID); ok {
-		return v.(*auth.PermisosUsuario)
+		if p, ok := v.(*auth.PermisosUsuario); ok {
+			return p
+		}
 	}
 	return nil
 }
@@ -271,7 +273,18 @@ func (r *PermissionRepo) UpdateRol(ctx context.Context, rolID int, nombre, descr
 		return fmt.Errorf("updating role: %w", err)
 	}
 
-	return r.setRolPermisos(ctx, rolID, permisoIDs)
+	if err := r.setRolPermisos(ctx, rolID, permisoIDs); err != nil {
+		return err
+	}
+
+	afectados, err := r.usuariosConRol(ctx, rolID)
+	if err != nil {
+		return fmt.Errorf("querying users affected by role update: %w", err)
+	}
+	for _, uid := range afectados {
+		r.InvalidarCache(uid)
+	}
+	return nil
 }
 
 // DeleteRol deletes a role if it's not a system role.
@@ -292,23 +305,78 @@ func (r *PermissionRepo) DeleteRol(ctx context.Context, rolID int) error {
 		return auth.ErrRolEsSistema
 	}
 
-	r.db.ExecContext(ctx, "DELETE FROM auth_rol_permisos WHERE rol_id = ?", rolID)
-	r.db.ExecContext(ctx, "DELETE FROM auth_usuario_roles WHERE rol_id = ?", rolID)
-	_, err = r.db.ExecContext(ctx, "DELETE FROM auth_roles WHERE rol_id = ?", rolID)
-	return err
+	// Collect affected users before removing the assignments, so we can
+	// invalidate their cached permissions once the role is gone.
+	afectados, err := r.usuariosConRol(ctx, rolID)
+	if err != nil {
+		return fmt.Errorf("querying users affected by role deletion: %w", err)
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning tx for delete rol: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM auth_rol_permisos WHERE rol_id = ?", rolID); err != nil {
+		return fmt.Errorf("deleting rol_permisos: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM auth_usuario_roles WHERE rol_id = ?", rolID); err != nil {
+		return fmt.Errorf("deleting usuario_roles: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM auth_roles WHERE rol_id = ?", rolID); err != nil {
+		return fmt.Errorf("deleting rol: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing delete rol: %w", err)
+	}
+
+	for _, uid := range afectados {
+		r.InvalidarCache(uid)
+	}
+	return nil
+}
+
+// usuariosConRol returns the distinct users currently assigned to rolID,
+// so callers can invalidate their cached permissions after a role mutation.
+func (r *PermissionRepo) usuariosConRol(ctx context.Context, rolID int) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT DISTINCT usuario_id FROM auth_usuario_roles WHERE rol_id = ?", rolID)
+	if err != nil {
+		return nil, fmt.Errorf("querying affected users: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (r *PermissionRepo) setRolPermisos(ctx context.Context, rolID int, permisoIDs []int) error {
-	r.db.ExecContext(ctx, "DELETE FROM auth_rol_permisos WHERE rol_id = ?", rolID)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning tx for rol_permisos: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM auth_rol_permisos WHERE rol_id = ?", rolID); err != nil {
+		return fmt.Errorf("clearing rol_permisos: %w", err)
+	}
 	for _, pid := range permisoIDs {
-		if _, err := r.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO auth_rol_permisos (rol_id, permiso_id) VALUES (?, ?)",
 			rolID, pid,
 		); err != nil {
 			return fmt.Errorf("inserting rol_permiso: %w", err)
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 // AsignacionRolInput is a single role assignment with scope.
@@ -328,22 +396,30 @@ func (r *PermissionRepo) SetUsuarioRoles(ctx context.Context, usuarioID int64, a
 		return err
 	}
 
-	_, err := r.db.ExecContext(ctx, "DELETE FROM auth_usuario_roles WHERE usuario_id = ?", usuarioID)
+	defer r.InvalidarCache(usuarioID)
+
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("beginning tx for usuario roles: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM auth_usuario_roles WHERE usuario_id = ?", usuarioID); err != nil {
 		return fmt.Errorf("clearing user roles: %w", err)
 	}
 
 	for _, a := range asignaciones {
-		_, err := r.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO auth_usuario_roles (usuario_id, rol_id, centro_costo_id, asignado_por) VALUES (?, ?, ?, ?)",
 			usuarioID, a.RolID, a.CentroCostoID, asignadoPor,
-		)
-		if err != nil {
+		); err != nil {
 			return fmt.Errorf("inserting user role: %w", err)
 		}
 	}
 
-	r.InvalidarCache(usuarioID)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing user roles: %w", err)
+	}
 	return nil
 }
 
@@ -359,22 +435,30 @@ func (r *PermissionRepo) SetUsuarioPermisos(ctx context.Context, usuarioID int64
 		return auth.ErrPermisosMissing
 	}
 
-	_, err := r.db.ExecContext(ctx, "DELETE FROM auth_usuario_permisos WHERE usuario_id = ?", usuarioID)
+	defer r.InvalidarCache(usuarioID)
+
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("beginning tx for usuario permisos: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM auth_usuario_permisos WHERE usuario_id = ?", usuarioID); err != nil {
 		return fmt.Errorf("clearing user direct perms: %w", err)
 	}
 
 	for _, a := range asignaciones {
-		_, err := r.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO auth_usuario_permisos (usuario_id, permiso_id, centro_costo_id, asignado_por) VALUES (?, ?, ?, ?)",
 			usuarioID, a.PermisoID, a.CentroCostoID, asignadoPor,
-		)
-		if err != nil {
+		); err != nil {
 			return fmt.Errorf("inserting user direct perm: %w", err)
 		}
 	}
 
-	r.InvalidarCache(usuarioID)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing user direct perms: %w", err)
+	}
 	return nil
 }
 

@@ -273,15 +273,16 @@ WHERE produccion_id = ?`
 	return nil
 }
 
-// SetBloqueado marks or unmarks a production as blocked.
-func (r *ProductionRepo) SetBloqueado(ctx context.Context, produccionID int64, bloqueado bool) error {
-	const q = `UPDATE s3_monitoring_producciones SET bloqueado = ?, fecha_actualizacion = ? WHERE produccion_id = ?`
-	_, err := r.db.ExecContext(ctx, q, boolToTinyint(bloqueado), time.Now().UTC(), produccionID)
-	if err != nil {
-		return fmt.Errorf("setting bloqueado: %w", err)
-	}
-	return nil
-}
+// Nota: no existe SetBloqueado a propósito. La columna bloqueado la mantiene
+// un trigger de s3_monitoring_producciones a partir de posible_cosecha:
+//
+//	IF new.posible_cosecha <> old.posible_cosecha THEN
+//	    SET new.bloqueado = new.posible_cosecha;
+//	END IF;
+//
+// Escribir bloqueado directamente dejaría ambos campos desincronizados, porque
+// el trigger sólo reacciona a cambios de posible_cosecha. Para bloquear o
+// desbloquear, usar UpdatePosibleCosecha.
 
 // ERPProduccion holds fields enriched from ERP tables.
 type ERPProduccion struct {
@@ -391,6 +392,26 @@ WHERE p.produccion_id = ?
 		return nil, fmt.Errorf("getting erp details for produccion %d: %w", produccionID, err)
 	}
 	return &e, nil
+}
+
+// GetCentroCostoByMonitoringID resolves a monitoring production ID to its
+// centro_costo_id via the ERP tables. Returns nil when not found.
+func (r *ProductionRepo) GetCentroCostoByMonitoringID(ctx context.Context, monitoringID uint) (*int64, error) {
+	const q = `
+SELECT p.centro_costo_id
+FROM s3_monitoring_producciones mp
+JOIN producciones p ON mp.produccion_id = p.produccion_id
+WHERE mp.s3_monitoring_produccion_id = ?`
+
+	var ccID int64
+	err := r.db.QueryRowContext(ctx, q, monitoringID).Scan(&ccID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("resolving centro_costo for monitoring %d: %w", monitoringID, err)
+	}
+	return &ccID, nil
 }
 
 const prodSelectCols = `

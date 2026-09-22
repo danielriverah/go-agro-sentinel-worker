@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"agro-sentinel-worker/internal/auth"
 	"agro-sentinel-worker/internal/domain"
 )
 
@@ -40,9 +41,11 @@ type mockProductionRepo struct {
 	listActiveErr error
 	byID          map[int64]*domain.Production
 	getErr        error
-	setBloqueado  bool
-	setBloqID     int64
-	setBloqErr    error
+	// Bloquear y desbloquear pasan por posible_cosecha: la columna bloqueado
+	// la deriva un trigger de la tabla.
+	posibleCosecha    bool
+	posibleCosechaID  int64
+	posibleCosechaErr error
 }
 
 func (m *mockProductionRepo) ListActive(ctx context.Context) ([]*domain.Production, error) {
@@ -97,12 +100,12 @@ func (m *mockProductionRepo) UpdatePolygon(ctx context.Context, monitoringID uin
 	return nil
 }
 
-func (m *mockProductionRepo) SetBloqueado(ctx context.Context, produccionID int64, bloqueado bool) error {
-	if m.setBloqErr != nil {
-		return m.setBloqErr
+func (m *mockProductionRepo) UpdatePosibleCosecha(ctx context.Context, produccionID int64, posible bool) error {
+	if m.posibleCosechaErr != nil {
+		return m.posibleCosechaErr
 	}
-	m.setBloqueado = bloqueado
-	m.setBloqID = produccionID
+	m.posibleCosecha = posible
+	m.posibleCosechaID = produccionID
 	return nil
 }
 
@@ -199,6 +202,32 @@ func (m *mockGDALExecutor) Run(ctx context.Context) (string, error) {
 	return m.version, m.err
 }
 
+// mockPermissionChecker defaults to Disponible()=false (permissive mode),
+// matching deployments where the permission tables don't exist yet — this
+// lets existing handler tests pass unchanged even when Permisos is wired up.
+type mockPermissionChecker struct {
+	disponible bool
+	perms      map[int64]*auth.PermisosUsuario
+	cargarErr  error
+}
+
+var _ PermissionChecker = (*mockPermissionChecker)(nil)
+
+func (m *mockPermissionChecker) Disponible() bool { return m.disponible }
+
+func (m *mockPermissionChecker) CargarPermisos(ctx context.Context, usuarioID int64) (*auth.PermisosUsuario, error) {
+	if m.cargarErr != nil {
+		return nil, m.cargarErr
+	}
+	return m.perms[usuarioID], nil
+}
+
+func (m *mockPermissionChecker) ObtenerPermisosCacheados(usuarioID int64) *auth.PermisosUsuario {
+	return m.perms[usuarioID]
+}
+
+func (m *mockPermissionChecker) InvalidarCache(usuarioID int64) {}
+
 // --- tests ---
 
 func TestListProducciones(t *testing.T) {
@@ -286,13 +315,16 @@ func TestGetProduccionNotFound(t *testing.T) {
 	}
 }
 
-// The {id} in the URL is the monitoring PK, while SetBloqueado takes the ERP
+// The {id} in the URL is the monitoring PK, while the update takes the ERP
 // produccion_id. The fixture keeps them different on purpose so a regression
 // that mixes the two identifiers fails here.
+//
+// Desbloquear escribe posible_cosecha = 0, nunca bloqueado: un trigger de la
+// tabla deriva bloqueado de ese campo.
 func TestDesbloquearProduccion(t *testing.T) {
 	prodRepo := &mockProductionRepo{
 		byID: map[int64]*domain.Production{
-			2007: {ID: 7, ProduccionID: 2007, Bloqueado: true},
+			2007: {ID: 7, ProduccionID: 2007, Bloqueado: true, PosibleCosecha: true},
 		},
 	}
 	h := &Handlers{Productions: prodRepo}
@@ -303,15 +335,41 @@ func TestDesbloquearProduccion(t *testing.T) {
 
 	h.DesbloquearProduccion(w, req)
 
-	resp := w.Result()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	if prodRepo.setBloqueado != false {
-		t.Error("expected SetBloqueado(false) to be called")
+	if prodRepo.posibleCosecha != false {
+		t.Error("desbloquear debe escribir posible_cosecha = false")
 	}
-	if prodRepo.setBloqID != 2007 {
-		t.Errorf("SetBloqueado got produccion_id %d, want the ERP id 2007", prodRepo.setBloqID)
+	if prodRepo.posibleCosechaID != 2007 {
+		t.Errorf("produccion_id = %d, want el id del ERP 2007", prodRepo.posibleCosechaID)
+	}
+}
+
+// Bloquear es la operación inversa: marca posible_cosecha y el trigger hace
+// el resto. Es la vía manual para señalar que un lote está listo.
+func TestBloquearProduccion(t *testing.T) {
+	prodRepo := &mockProductionRepo{
+		byID: map[int64]*domain.Production{
+			2007: {ID: 7, ProduccionID: 2007},
+		},
+	}
+	h := &Handlers{Productions: prodRepo}
+
+	req := httptest.NewRequest("POST", "/api/v1/producciones/7/bloquear", nil)
+	req.SetPathValue("id", "7")
+	w := httptest.NewRecorder()
+
+	h.BloquearProduccion(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !prodRepo.posibleCosecha {
+		t.Error("bloquear debe escribir posible_cosecha = true")
+	}
+	if prodRepo.posibleCosechaID != 2007 {
+		t.Errorf("produccion_id = %d, want 2007", prodRepo.posibleCosechaID)
 	}
 }
 

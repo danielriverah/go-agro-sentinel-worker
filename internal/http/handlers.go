@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"agro-sentinel-worker/internal/auth"
 	"agro-sentinel-worker/internal/daemon"
 	"agro-sentinel-worker/internal/domain"
 	"agro-sentinel-worker/internal/ia"
@@ -27,7 +28,9 @@ type ProductionRepository interface {
 	GetByID(ctx context.Context, id uint) (*domain.Production, error)
 	GetByProduccionID(ctx context.Context, produccionID int64) (*domain.Production, error)
 	GetByMonitoringID(ctx context.Context, monitoringID uint) (*domain.Production, error)
-	SetBloqueado(ctx context.Context, produccionID int64, bloqueado bool) error
+	// Bloquear y desbloquear se hacen a través de posible_cosecha: un trigger
+	// de la tabla deriva bloqueado de ese campo.
+	UpdatePosibleCosecha(ctx context.Context, produccionID int64, posible bool) error
 	UpdateIAuto(ctx context.Context, produccionID int64, iaAuto bool) error
 	GetStatsForActive(ctx context.Context) (map[uint]*domain.ProductionStats, error)
 	UpdatePolygon(ctx context.Context, monitoringID uint, poligono, pbox []byte) error
@@ -91,6 +94,15 @@ type DynamoDBChecker interface {
 	DescribeTable(ctx context.Context, tableName string) error
 }
 
+// PermissionChecker provides permission evaluation for handlers.
+// Nil or unavailable = permissive mode (no filtering).
+type PermissionChecker interface {
+	Disponible() bool
+	CargarPermisos(ctx context.Context, usuarioID int64) (*auth.PermisosUsuario, error)
+	ObtenerPermisosCacheados(usuarioID int64) *auth.PermisosUsuario
+	InvalidarCache(usuarioID int64)
+}
+
 // GDALExecutor runs GDAL commands. Implemented by *GDALCommand.
 type GDALExecutor interface {
 	Run(ctx context.Context) (string, error)
@@ -137,6 +149,9 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 type Handlers struct {
 	Productions ProductionRepository
 	Scenes      SceneRepository
+	Timeline    TimelineRepository
+	Fases       FaseRepository
+	Alertas     AlertaRepository
 	Files       FileRepository
 	IAResults   IAResultRepository
 	IA          IATriggerer // nil = IA not configured
@@ -145,11 +160,24 @@ type Handlers struct {
 	S3Bucket    string
 	S3Prefix    string // used to build ia_req.json S3 keys
 	Sync        Syncer
-	Log         *slog.Logger
+	// Borrado de monitoreo: toca los tres sistemas, por eso viaja aparte.
+	S3Delete                S3PrefixDeleter
+	DynamoDelete            DynamoDeleter
+	Monitoreo               MonitoreoDeleter
+	DynamoTablaProducciones string
+	DynamoTablaEscenas      string
+	// DeleteAllowedUserIDs limita quién puede eliminar un monitoreo. Vacío =
+	// nadie: la operación es irreversible, así que por omisión queda cerrada.
+	DeleteAllowedUserIDs []int64
+	Log                  *slog.Logger
 	DB          DBPinger
 	S3Health    S3Checker
 	DynamoDB    DynamoDBChecker
 	GDAL        GDALExecutor
+	// Permisos habilita el filtrado por rancho en endpoints de listado. nil o
+	// Disponible()==false = modo permisivo (sin filtrar), para no romper
+	// despliegues donde las tablas de permisos aún no existen.
+	Permisos PermissionChecker
 }
 
 // desbloquearRequest is the optional body for POST .../desbloquear.
@@ -172,6 +200,14 @@ func (h *Handlers) ListProducciones(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.Permisos != nil && h.Permisos.Disponible() {
+		productions, err = h.filterProduccionesPorPermiso(ctx, productions)
+		if err != nil {
+			Error(w, http.StatusInternalServerError, "cargando permisos: "+err.Error())
+			return
+		}
+	}
+
 	// Fetch scene stats in a single query — non-fatal if it fails.
 	stats, _ := h.Productions.GetStatsForActive(ctx)
 
@@ -181,6 +217,46 @@ func (h *Handlers) ListProducciones(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, summaries)
+}
+
+// filterProduccionesPorPermiso restringe la lista a las producciones cuyo
+// centro_costo_id está entre los ranchos donde el usuario autenticado tiene
+// el permiso "producciones.ver". Sin claims en el contexto (no debería pasar
+// detrás del middleware de auth) devuelve la lista sin filtrar. nil de
+// RanchosConPermiso significa "todos los ranchos" — no se filtra.
+func (h *Handlers) filterProduccionesPorPermiso(ctx context.Context, productions []*domain.Production) ([]*domain.Production, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	if claims == nil {
+		return productions, nil
+	}
+
+	perms := h.Permisos.ObtenerPermisosCacheados(claims.UserID)
+	if perms == nil {
+		var err error
+		perms, err = h.Permisos.CargarPermisos(ctx, claims.UserID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	ranchos := perms.RanchosConPermiso("producciones.ver")
+	if ranchos == nil {
+		// Todos los ranchos — no filtrar.
+		return productions, nil
+	}
+
+	allowed := make(map[int64]bool, len(ranchos))
+	for _, id := range ranchos {
+		allowed[id] = true
+	}
+
+	filtered := make([]*domain.Production, 0, len(productions))
+	for _, p := range productions {
+		if allowed[p.CentroCostoID] {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered, nil
 }
 
 // GetProduccion handles GET /api/v1/producciones/{id}.
@@ -218,29 +294,37 @@ type produccionDetail struct {
 
 // DesbloquearProduccion handles POST /api/v1/producciones/{id}/desbloquear.
 // {id} is the s3_monitoring_produccion_id (PK).
+//
+// Escribe posible_cosecha = 0, no bloqueado. Un trigger de la tabla deriva
+// bloqueado de posible_cosecha cuando éste cambia, así que tocar bloqueado
+// directamente dejaría ambos campos desincronizados.
 func (h *Handlers) DesbloquearProduccion(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseUintParam(w, r, "id")
+	h.cambiarPosibleCosecha(w, r, false)
+}
+
+// BloquearProduccion handles POST /api/v1/producciones/{id}/bloquear.
+//
+// Marca posible_cosecha = 1; el trigger la bloquea. Es la vía manual para
+// señalar que un lote está listo para cosecha.
+func (h *Handlers) BloquearProduccion(w http.ResponseWriter, r *http.Request) {
+	h.cambiarPosibleCosecha(w, r, true)
+}
+
+func (h *Handlers) cambiarPosibleCosecha(w http.ResponseWriter, r *http.Request, posible bool) {
+	production, ok := h.produccionDesdeRuta(w, r)
 	if !ok {
 		return
 	}
 
-	// Resolve PK → ERP produccion_id for SetBloqueado.
-	production, err := h.Productions.GetByID(r.Context(), id)
-	if err != nil {
-		Error(w, http.StatusInternalServerError, "getting produccion: "+err.Error())
-		return
-	}
-	if production == nil {
-		Error(w, http.StatusNotFound, "produccion not found")
+	if err := h.Productions.UpdatePosibleCosecha(r.Context(), production.ProduccionID, posible); err != nil {
+		Error(w, http.StatusInternalServerError, "actualizando posible_cosecha: "+err.Error())
 		return
 	}
 
-	if err := h.Productions.SetBloqueado(r.Context(), production.ProduccionID, false); err != nil {
-		Error(w, http.StatusInternalServerError, "desbloqueando produccion: "+err.Error())
-		return
-	}
-
-	production.Bloqueado = false
+	// El trigger mantiene bloqueado == posible_cosecha; se refleja aquí para
+	// que la respuesta coincida con lo que quedó en la base.
+	production.PosibleCosecha = posible
+	production.Bloqueado = posible
 	JSON(w, http.StatusOK, production)
 }
 

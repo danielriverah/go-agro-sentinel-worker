@@ -34,6 +34,10 @@ type ProductionRepository interface {
 	UpdateIAuto(ctx context.Context, produccionID int64, iaAuto bool) error
 	GetStatsForActive(ctx context.Context) (map[uint]*domain.ProductionStats, error)
 	UpdatePolygon(ctx context.Context, monitoringID uint, poligono, pbox []byte) error
+	// GetCentroCostoByMonitoringID resuelve un s3_monitoring_produccion_id a su
+	// centro_costo_id. Lo usa auth.RequirePermission para comprobar permisos
+	// per-rancho sin que el middleware tenga que conocer el repo completo.
+	GetCentroCostoByMonitoringID(ctx context.Context, monitoringID uint) (*int64, error)
 }
 
 // SceneRepository is the subset of database.SceneRepo the API needs.
@@ -178,6 +182,10 @@ type Handlers struct {
 	// Disponible()==false = modo permisivo (sin filtrar), para no romper
 	// despliegues donde las tablas de permisos aún no existen.
 	Permisos PermissionChecker
+	// PermisosRepo respalda los endpoints de administración de roles/permisos
+	// (internal/http/handlers_permisos.go). Es el mismo *database.PermissionRepo
+	// que Permisos, expuesto con una interfaz más amplia para el CRUD.
+	PermisosRepo PermissionRepository
 }
 
 // desbloquearRequest is the optional body for POST .../desbloquear.

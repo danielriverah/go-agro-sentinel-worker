@@ -83,6 +83,18 @@ func main() {
 	sceneRepo := database.NewSceneRepo(db)
 	fileRepo := database.NewFileRepo(db)
 	iaResultRepo := database.NewIAResultRepository(db)
+	alertaRepo := database.NewAlertaRepo(db)
+	if !alertaRepo.Disponible() {
+		l.Warn("monitoring_alertas no existe: los análisis IA no generarán avisos")
+	}
+
+	permRepo := database.NewPermissionRepo(db)
+	if permRepo.Disponible() {
+		permRepo.Bootstrap(ctx, l)
+		l.Info("permission system active")
+	} else {
+		l.Warn("auth_permisos table not found, running in permissive mode")
+	}
 
 	var syncer apphttp.Syncer
 	polygonRepo := database.NewPolygonRepo(db, sync.CalculateBBoxFromWKT)
@@ -117,7 +129,9 @@ func main() {
 				Bedrock:     bedrockClient,
 				Results:     iaResultRepo,
 				Scenes:      sceneRepo,
+				SceneInfo:   sceneRepo,
 				Productions: prodRepo,
+				Alertas:     alertaRepo,
 				Bucket:      cfg.S3.Bucket,
 				TempDir:     cfg.Processing.TempDir,
 				Logger:      l,
@@ -129,6 +143,9 @@ func main() {
 	h := &apphttp.Handlers{
 		Productions: prodRepo,
 		Scenes:      sceneRepo,
+		Timeline:    sceneRepo,
+		Fases:       database.NewFaseRepo(db),
+		Alertas:     alertaRepo,
 		Files:       fileRepo,
 		IAResults:   iaResultRepo,
 		IA:          iaTriggerer,
@@ -137,11 +154,22 @@ func main() {
 		S3Bucket:    cfg.S3.Bucket,
 		S3Prefix:    cfg.S3.Prefix,
 		Sync:        syncer,
-		Log:         l,
+
+		S3Delete:                s3Client,
+		DynamoDelete:            dynamoClient,
+		Monitoreo:               database.NewMonitoreoRepo(db),
+		DynamoTablaProducciones: cfg.DynamoDB.TableProducciones,
+		DynamoTablaEscenas:      cfg.DynamoDB.TableEscenas,
+		DeleteAllowedUserIDs:    cfg.Auth.DeleteAllowedUserIDs,
+
+		Log: l,
 		DB:          db,
 		S3Health:    s3Client,
 		DynamoDB:    dynamoClient,
 		GDAL:        apphttp.NewGDALCommand(),
+
+		Permisos:     permRepo,
+		PermisosRepo: permRepo,
 	}
 
 	// Auth — JWT secret must be ≥32 bytes.
@@ -172,6 +200,14 @@ func main() {
 		SecretKey: jwtSecret,
 		TokenTTL:  tokenTTL,
 		Log:       l,
+	}
+
+	// El borrado de monitoreo es irreversible, así que por omisión queda
+	// cerrado. Decirlo al arrancar evita que alguien lo dé por roto al ver un 403.
+	if len(cfg.Auth.DeleteAllowedUserIDs) == 0 {
+		l.Warn("eliminar monitoreo está deshabilitado: ningún usuario autorizado — configura AUTH_DELETE_ALLOWED_USER_IDS")
+	} else {
+		l.Info("eliminar monitoreo habilitado", "usuarios_autorizados", len(cfg.Auth.DeleteAllowedUserIDs))
 	}
 
 	router := apphttp.NewRouter(l, h, authH, jwtSecret)

@@ -63,6 +63,16 @@ func (m *mockProductionRepo) GetByMonitoringID(ctx context.Context, monitoringID
 	return nil, nil
 }
 
+func (m *mockProductionRepo) GetCentroCostoByMonitoringID(ctx context.Context, monitoringID uint) (*int64, error) {
+	for _, p := range m.byID {
+		if p != nil && p.ID == monitoringID {
+			cc := p.CentroCostoID
+			return &cc, nil
+		}
+	}
+	return nil, nil
+}
+
 // GetByID looks up by the monitoring PK. The fixtures are keyed by ERP
 // produccion_id, so scan for the matching record.
 func (m *mockProductionRepo) GetByID(ctx context.Context, id uint) (*domain.Production, error) {

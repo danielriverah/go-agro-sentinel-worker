@@ -30,6 +30,7 @@ export interface PBoxJSON {
 export interface Production {
   ID: number
   ProduccionID: number
+  CentroCostoID: number
   Folio: string
   Rancho: string
   Cosecha: string
@@ -75,6 +76,10 @@ export interface Scene {
   LatestIaRiesgoNivel: RiesgoNivel | ''
   LatestIaFechaAnalisis: string | null
   MultibandRefEscenaID: number | null
+  // Extensión real del raster. null = usa el tile_bbox de su producción;
+  // con valor = heredada de la escena origen del multiband reutilizado.
+  // Evita tener que resolver la cadena escena -> origen -> producción.
+  ImageBBox: unknown | null
 }
 
 export interface ArchivoItem {
@@ -184,4 +189,207 @@ export interface LoginResponse {
   token: string
   expires_at: string
   username: string
+}
+
+// ── Timeline de índices ───────────────────────────────────────────────────────
+
+export interface TimelineSerie {
+  clave: string
+  principal: boolean
+  grupo: 'vegetacion' | 'humedad'
+}
+
+export interface TimelineExtremo {
+  fecha: string
+  valor: number
+}
+
+export interface TimelineResumen {
+  puntos_totales: number
+  puntos_confiables: number
+  mejor_dia: TimelineExtremo | null
+  peor_dia: TimelineExtremo | null
+  tendencia: 'mejorando' | 'declinando' | 'estable'
+}
+
+export interface TimelineProduccion {
+  id: number
+  folio: string
+  rancho: string
+  cosecha: string
+  variedades: string
+  fecha_plantacion: string | null
+  fecha_fin: string | null
+}
+
+export interface TimelinePunto {
+  escena_id: number
+  scene_name: string
+  fecha: string
+  dia_cultivo: number | null
+  dias_a_cosecha: number | null
+  nubosidad: number | null
+  confiable: boolean
+  // Presente sólo cuando confiable=false: sin_dato_sensor, sin_params,
+  // nubosidad_alta o escena_no_usable.
+  motivo_no_confiable?: string
+  // Ausentes en puntos no confiables: el backend los omite a propósito para
+  // que la gráfica no dibuje una caída que en realidad es ruido de nubes.
+  valores?: Record<string, number>
+  delta?: Record<string, number>
+  estado?: Record<string, string>
+  ia?: { estado: string; riesgo: string; motivo?: string }
+}
+
+export interface TimelineFase {
+  nombre: string
+  dia_inicio: number
+  dia_fin: number
+  color: string
+}
+
+export interface TimelineResponse {
+  produccion: TimelineProduccion
+  resumen: TimelineResumen
+  series: TimelineSerie[]
+  puntos: TimelinePunto[]
+  fases: TimelineFase[]
+}
+
+// Fase del ciclo de cultivo. Cuelga del produccion_id del ERP, no del
+// monitoreo, para sobrevivir al borrado de éste.
+export interface FaseCultivo {
+  id: number
+  produccion_id: number
+  nombre: string
+  dia_inicio: number
+  dia_fin: number
+  orden: number
+}
+
+export interface FaseInput {
+  nombre: string
+  dia_inicio: number
+  dia_fin: number
+}
+
+// Usuario en la pantalla de administración. El backend nunca expone hash ni salt.
+export interface UsuarioAdmin {
+  user_id: number
+  username: string
+  activo: number
+  fecha_creacion: string
+}
+
+// Resultado del borrado de monitoreo, desglosado por sistema.
+export interface BorradoMonitoreo {
+  produccion_id: number
+  folio: string
+  s3_objetos_borrados: number
+  dynamodb_escenas_borradas: number
+  mysql: {
+    escenas_dependientes_desvinculadas: number
+    archivos: number
+    analisis_ia: number
+    escenas: number
+    filas_monitoreo: number
+    monitoring_erp_apagado: boolean
+  }
+  advertencia?: string
+}
+
+// ── Alertas (notificaciones de la IA) ─────────────────────────────────────────
+
+export type AlertaEstado = 'nueva' | 'vista' | 'resuelta'
+export type AlertaSeveridad = 'baja' | 'media' | 'alta'
+
+export interface Alerta {
+  monitoring_alerta_id: number
+  produccion_id: number
+  scene_name?: string
+  scene_date?: string
+  alert_type: string
+  severity: AlertaSeveridad
+  estado: AlertaEstado
+  title: string
+  message: string
+  action_suggested?: string
+  source: string
+  notify_email: boolean
+  seen_at?: string
+  seen_by?: string
+  resolved_at?: string
+  resolved_by?: string
+  created_at: string
+  updated_at?: string
+  // Enriquecidos por JOIN con el ERP, para agrupar en la vista.
+  folio?: string
+  rancho?: string
+  cultivo?: string
+}
+
+// Producción que ya tiene fases y puede servir de modelo para copiar.
+// Trae las fases incluidas para poder revisarlas antes de aplicarlas.
+export interface PlantillaFases {
+  produccion_id: number
+  folio: string
+  cultivo: string
+  rancho: string
+  fases: FaseCultivo[]
+}
+
+// ── Permisos y Roles ──────────────────────────────────────────────────────────
+
+export interface PermisosEfectivos {
+  global: string[]
+  por_rancho: Record<string, string[]>
+  ranchos_todos: boolean
+  degraded: boolean
+}
+
+export interface PermisoCatalogo {
+  permiso_id: number
+  clave: string
+  modulo: string
+  descripcion: string
+  scope: 'global' | 'rancho'
+}
+
+export interface Rol {
+  rol_id: number
+  nombre: string
+  descripcion: string
+  es_sistema: boolean
+  permiso_ids: number[]
+}
+
+export interface AsignacionRol {
+  rol_id: number
+  centro_costo_id: number | null
+}
+
+export interface AsignacionRolDetalle {
+  usuario_rol_id: number
+  rol_id: number
+  rol_nombre: string
+  centro_costo_id: number | null
+  rancho_nombre: string
+}
+
+export interface AsignacionPermisoDetalle {
+  usuario_permiso_id: number
+  permiso_id: number
+  permiso_clave: string
+  centro_costo_id: number | null
+  rancho_nombre: string
+}
+
+export interface UsuarioAsignaciones {
+  roles: AsignacionRolDetalle[]
+  directos: AsignacionPermisoDetalle[]
+}
+
+export interface CentroCostoItem {
+  centro_costo_id: number
+  nombre: string
 }

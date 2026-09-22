@@ -6,7 +6,31 @@
   "nav": {
     "dashboard": "Producciones",
     "logout": "Cerrar sesión",
-    "language": "Idioma"
+    "configuracion": "Configuración",
+    "language": "Idioma",
+    "alertas": "Alertas"
+  },
+  "config": {
+    "titulo": "Configuración",
+    "subtitulo": "Administración de usuarios del sistema",
+    "usuarios": "Usuarios",
+    "usuario": "Usuario",
+    "estado": "Estado",
+    "acciones": "Acciones",
+    "activo": "Activo",
+    "inactivo": "Inactivo",
+    "activar": "Activar",
+    "desactivar": "Desactivar",
+    "tu": "(tú)",
+    "noTeDesactives": "No puedes desactivar tu propio usuario",
+    "cambiarPassword": "Cambiar contraseña",
+    "nuevaPassword": "Nueva contraseña",
+    "minimo8": "Mínimo 8 caracteres",
+    "sinUsuarios": "No hay usuarios registrados",
+    "activado": "{u} activado",
+    "desactivado": "{u} desactivado",
+    "passwordCambiada": "Contraseña de {u} actualizada",
+    "sinProcedimientos": "Los procedimientos de administración no existen todavía en la base de datos. Pide a tu administrador que aplique el script phase3-usuarios-admin-procedures.sql."
   },
   "auth": {
     "login": "Iniciar sesión",
@@ -35,7 +59,9 @@
     "ia_auto_on": "IA automática activada — se analizará tras generar TIF",
     "ia_auto_off": "IA automática desactivada",
     "scenes": "Escenas",
-    "usable_scenes": "{n} usables de {total}"
+    "usable_scenes": "{n} usables de {total}",
+    "markHarvest": "Marcar posible cosecha",
+    "markHarvestHint": "Marca el lote como listo para cosecha; queda bloqueado para nuevos procesamientos."
   },
   "scene": {
     "date": "Fecha",
@@ -124,5 +150,153 @@
     "cancel": "Cancelar",
     "close": "Cerrar",
     "confirm": "Confirmar"
+  },
+  "timeline": {
+    "tab": "Tendencias",
+    "cargando": "Cargando historial...",
+    "reintentar": "Reintentar",
+    "nubosidad": "Nubosidad",
+    "diaCultivo": "Día de cultivo",
+    "diasACosecha": "Días a cosecha",
+    "ia": "Análisis IA",
+    "unSoloPunto": "Sólo hay una medición en este rango; aún no puede verse una tendencia.",
+    "leyendaNoConfiable": "{n} día(s) sin medición confiable: la línea se interrumpe en lugar de inventar un valor.",
+    "vacio": {
+      "titulo": "Todavía no hay mediciones",
+      "detalle": "La gráfica aparecerá cuando se procese la primera escena de esta producción."
+    },
+    "resumen": {
+      "confiables": "{ok} de {total} mediciones confiables",
+      "tendencia": "Tendencia"
+    },
+    "tendencia": {
+      "mejorando": "Mejorando",
+      "declinando": "Declinando",
+      "estable": "Estable"
+    },
+    "rango": {
+      "semana": "Última semana",
+      "mes": "Último mes",
+      "todo": "Todo",
+      "personalizado": "Personalizado",
+      "anterior": "Rango anterior",
+      "siguiente": "Rango siguiente",
+      "desde": "Desde",
+      "hasta": "Hasta",
+      "aplicar": "Aplicar"
+    },
+    "indice": {
+      "ndvi": "Vigor de Vegetación",
+      "ndmi": "Humedad del Suelo",
+      "evi": "Vigor mejorado (EVI)",
+      "savi": "Vigor ajustado a suelo (SAVI)",
+      "ndre": "Clorofila / borde rojo (NDRE)",
+      "gndvi": "Vigor en verde (GNDVI)",
+      "nbr": "Índice de quema (NBR)"
+    },
+    "estado": {
+      "bajo": "Bajo",
+      "moderado": "Moderado",
+      "vigoroso": "Vigoroso",
+      "seco": "Seco",
+      "normal": "Normal",
+      "humedo": "Húmedo"
+    },
+    "motivo": {
+      "sin_dato_sensor": "El satélite no captó datos de esta zona ese día.",
+      "sin_params": "Esta escena aún no tiene estadísticas calculadas.",
+      "nubosidad_alta": "Demasiadas nubes sobre el cultivo: la medición no es confiable.",
+      "escena_no_usable": "Escena descartada por control de calidad."
+    }
+  },
+  "borrado": {
+    "zona": "Zona de riesgo",
+    "descripcion": "Eliminar el monitoreo borra las escenas, los archivos y los registros de esta producción. No se puede deshacer.",
+    "boton": "Eliminar monitoreo",
+    "tituloDialogo": "Eliminar monitoreo de esta producción",
+    "seBorra": "Se elimina de forma irreversible:",
+    "seConserva": "Se conserva:",
+    "itemEscenas": "{n} escena(s) con sus análisis y archivos registrados",
+    "itemS3": "Todas las imágenes y archivos almacenados en S3",
+    "itemDynamo": "Los registros de la producción y sus escenas en DynamoDB",
+    "itemProduccion": "La producción en el ERP (sólo se apaga su monitoreo)",
+    "itemFases": "Las fases de cultivo configuradas",
+    "avisoSync": "El monitoreo quedará apagado, así que la sincronización no volverá a darla de alta. Para retomarla habrá que reactivarla y descargar todo de nuevo.",
+    "escribeFolio": "Escribe {folio} para confirmar:",
+    "confirmar": "Eliminar definitivamente",
+    "requiereBloqueo": "Primero marca la producción como posible cosecha: sólo se elimina el monitoreo de un lote ya cerrado."
+  },
+  "fases": {
+    "titulo": "Fases del cultivo",
+    "ayuda": "Días desde la plantación",
+    "vacio": "Sin fases configuradas. La gráfica se muestra sin franjas.",
+    "sinTabla": "La tabla de fases todavía no existe en la base de datos. Pide a tu administrador que aplique el script phase3-create-produccion-fases-cultivo.sql.",
+    "nombre": "Fase",
+    "diaInicio": "Desde",
+    "diaFin": "Hasta",
+    "agregar": "Agregar fase",
+    "quitar": "Quitar",
+    "guardado": "Fases guardadas",
+    "copiarDe": "Copiar de:",
+    "copiar": "Copiar",
+    "copiadas": "{n} fase(s) copiadas. Revisa y guarda.",
+    "origenSinFases": "Esa producción no tiene fases configuradas.",
+    "sinPlantillas": "Ninguna producción tiene fases configuradas todavía.",
+    "vistaPrevia": "Fases que se copiarán"
+  },
+  "alertas": {
+    "titulo": "Alertas",
+    "subtitulo": "{n} sin leer",
+    "sinLeer": "sin leer",
+    "verResueltas": "Ver resueltas",
+    "todasSeveridades": "Todas las severidades",
+    "vacio": "No hay alertas pendientes",
+    "sinTabla": "La tabla de alertas no existe todavía en la base de datos.",
+    "verDetalle": "Ver detalle",
+    "ocultar": "Ocultar",
+    "resolver": "Marcar resuelta",
+    "verProduccion": "Ir a la producción",
+    "accion": "Acción sugerida",
+    "vistaPor": "Vista por {u}",
+    "sev": {
+      "alta": "Alta",
+      "media": "Media",
+      "baja": "Baja"
+    },
+    "estado": {
+      "nueva": "Nueva",
+      "vista": "Vista",
+      "resuelta": "Resuelta"
+    }
+  },
+  "permisos": {
+    "sinPermiso": "No tienes permiso para esta acción",
+    "titulo": "Roles y Permisos",
+    "roles": "Roles",
+    "permisos": "Permisos",
+    "usuarios": "Asignaciones de usuario",
+    "agregarRol": "Agregar rol",
+    "crearRol": "Crear rol",
+    "editarRol": "Editar rol",
+    "eliminarRol": "Eliminar rol",
+    "nombre": "Nombre",
+    "descripcion": "Descripción",
+    "todosRanchos": "Todos los ranchos",
+    "seleccionarRancho": "Seleccionar rancho",
+    "rolSistema": "Rol de sistema (no se puede eliminar)",
+    "confirmarEliminar": "¿Estás seguro de eliminar el rol \"{nombre}\"?",
+    "permisoDirecto": "Permiso directo",
+    "efectivos": "Permisos efectivos",
+    "origen": "Origen",
+    "guardar": "Guardar",
+    "modulos": {
+      "producciones": "Producciones",
+      "monitoreo": "Monitoreo",
+      "alertas": "Alertas",
+      "fases": "Fases",
+      "escenas": "Escenas",
+      "admin": "Administración",
+      "sistema": "Sistema"
+    }
   }
 }

@@ -6,6 +6,9 @@ import { producciones as prodApi, worker as workerApi, apiErrorMessage } from '@
 import { useNavContext, scrollToElement } from '@/composables/useNavContext'
 import { useWorkerStore } from '@/stores/worker'
 import { useProductionsStore } from '@/stores/productions'
+import { usePermissionsStore } from '@/stores/permissions'
+import TimelineChart from '@/components/TimelineChart.vue'
+import FasesEditor from '@/components/FasesEditor.vue'
 import type { Scene, SceneStatus } from '@/api/types'
 
 const { t, locale } = useI18n()
@@ -13,6 +16,7 @@ const route = useRoute()
 const router = useRouter()
 const workerStore = useWorkerStore()
 const prodStore = useProductionsStore()
+const permStore = usePermissionsStore()
 
 const produccionId = Number(route.params.id)
 const error = ref('')
@@ -144,6 +148,8 @@ async function cancelWorker() {
   }
 }
 
+// Ambas acciones escriben posible_cosecha: un trigger de la tabla deriva
+// bloqueado a partir de ese campo, así que no se toca bloqueado directamente.
 async function desbloquear() {
   unlocking.value = true
   try {
@@ -154,9 +160,57 @@ async function desbloquear() {
   }
 }
 
-function goToEscena(scene: Scene) {
+// Marcar el lote como listo para cosecha; el trigger lo bloquea.
+async function marcarPosibleCosecha() {
+  unlocking.value = true
+  try {
+    await prodApi.bloquear(produccionId)
+    await loadProduction()
+  } catch { /* ignore */ } finally {
+    unlocking.value = false
+  }
+}
+
+const activeTab = ref<'escenas' | 'tendencias'>('escenas')
+const showFases = ref(false)
+
+// ── Eliminar monitoreo (destructivo) ──────────────────────────────────────────
+const showDelete = ref(false)
+const folioConfirm = ref('')
+const deleting = ref(false)
+const deleteError = ref('')
+
+// El botón sólo se habilita cuando el folio tecleado coincide exactamente.
+// Un "¿estás seguro?" no basta para algo irreversible en tres sistemas.
+const folioCoincide = computed(
+  () => folioConfirm.value.trim() === (production.value?.Folio ?? '').trim() && folioConfirm.value !== '',
+)
+
+async function eliminarMonitoreo() {
+  if (!folioCoincide.value) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await prodApi.eliminarMonitoreo(produccionId, folioConfirm.value.trim())
+    // La producción ya no existe como monitoreo: no hay a dónde volver.
+    router.push({ name: 'producciones' })
+  } catch (e) {
+    deleteError.value = apiErrorMessage(e)
+  } finally {
+    deleting.value = false
+  }
+}
+// Cambiar esta clave remonta la gráfica tras guardar fases, para que las
+// franjas nuevas se reflejen sin recargar la página.
+const fasesVersion = ref(0)
+
+function goToEscenaById(escenaId: number) {
   navSceneIds.value = (production.value?.escenas?.map(s => s.ID) ?? []).reverse()
-  router.push({ name: 'escena', params: { produccionId, escenaId: scene.ID } })
+  router.push({ name: 'escena', params: { produccionId, escenaId } })
+}
+
+function goToEscena(scene: Scene) {
+  goToEscenaById(scene.ID)
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -316,10 +370,20 @@ const totalScenes = computed(() => production.value?.escenas?.length ?? 0)
             <button
               v-if="production.Bloqueado"
               @click="desbloquear"
-              :disabled="unlocking"
+              :disabled="unlocking || !permStore.puede('producciones.bloquear', production.CentroCostoID)"
+              :title="!permStore.puede('producciones.bloquear', production.CentroCostoID) ? t('permisos.sinPermiso') : undefined"
               class="text-sm px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60 transition-colors"
             >
               {{ unlocking ? '...' : t('production.unblock') }}
+            </button>
+            <button
+              v-else
+              @click="marcarPosibleCosecha"
+              :disabled="unlocking || !permStore.puede('producciones.bloquear', production.CentroCostoID)"
+              :title="!permStore.puede('producciones.bloquear', production.CentroCostoID) ? t('permisos.sinPermiso') : t('production.markHarvestHint')"
+              class="text-sm px-3 py-2 rounded-lg border border-yellow-300 text-yellow-700 hover:bg-yellow-50 disabled:opacity-60 transition-colors"
+            >
+              {{ unlocking ? '...' : t('production.markHarvest') }}
             </button>
             <!-- Botón Detener / Cancelar detención — visible cuando ESTA producción procesa -->
             <button
@@ -388,8 +452,23 @@ const totalScenes = computed(() => production.value?.escenas?.length ?? 0)
         <p v-if="cancelMsg" class="mt-3 text-xs text-orange-600 bg-orange-50 rounded-lg px-3 py-2">{{ cancelMsg }}</p>
       </div>
 
+      <!-- Tabs: listado de escenas vs evolución histórica -->
+      <div class="flex gap-1 border-b border-gray-200">
+        <button
+          v-for="tab in (['escenas', 'tendencias'] as const)"
+          :key="tab"
+          class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          :class="activeTab === tab
+            ? 'border-green-600 text-green-700'
+            : 'border-transparent text-gray-500 hover:text-gray-700'"
+          @click="activeTab = tab"
+        >
+          {{ tab === 'escenas' ? t('production.scenes') : t('timeline.tab') }}
+        </button>
+      </div>
+
       <!-- Scenes table -->
-      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <div v-show="activeTab === 'escenas'" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
           <h2 class="font-semibold text-gray-800">{{ t('production.scenes') }}</h2>
           <span class="text-xs text-gray-400">{{ totalScenes }} escenas</span>
@@ -495,6 +574,107 @@ const totalScenes = computed(() => production.value?.escenas?.length ?? 0)
           </table>
         </div>
       </div>
+
+      <!-- Evolución histórica de los índices -->
+      <template v-if="activeTab === 'tendencias'">
+        <TimelineChart
+          :key="`tl-${fasesVersion}`"
+          :produccion-id="produccionId"
+          @select="goToEscenaById"
+        />
+
+        <div class="mt-3">
+          <button
+            class="text-xs text-gray-500 hover:text-gray-800"
+            @click="showFases = !showFases"
+          >
+            {{ showFases ? '▾' : '▸' }} {{ t('fases.titulo') }}
+          </button>
+
+          <!-- Al guardar se remonta la gráfica para que repinte las franjas -->
+          <FasesEditor
+            v-if="showFases"
+            class="mt-2"
+            :produccion-id="produccionId"
+            @saved="fasesVersion++"
+          />
+        </div>
+      </template>
+
+      <!-- Zona de acciones peligrosas, separada del resto a propósito -->
+      <div class="mt-8 rounded-2xl border border-red-200 bg-red-50/40 p-4">
+        <h3 class="text-sm font-semibold text-red-800">{{ t('borrado.zona') }}</h3>
+        <p class="mt-1 text-xs text-red-700">{{ t('borrado.descripcion') }}</p>
+        <!-- Sólo se borra el monitoreo de un lote ya cerrado: bloqueado lo deriva
+             un trigger de posible_cosecha, así que equivale a estar cosechado. -->
+        <button
+          class="mt-3 rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="!production.Bloqueado || !permStore.puede('monitoreo.eliminar', production.CentroCostoID)"
+          :title="!permStore.puede('monitoreo.eliminar', production.CentroCostoID) ? t('permisos.sinPermiso') : undefined"
+          @click="showDelete = true; folioConfirm = ''; deleteError = ''"
+        >
+          {{ t('borrado.boton') }}
+        </button>
+        <p v-if="!production.Bloqueado" class="mt-1.5 text-xs text-red-700/80">
+          {{ t('borrado.requiereBloqueo') }}
+        </p>
+      </div>
     </template>
+
+    <!-- Confirmación del borrado -->
+    <div
+      v-if="showDelete && production"
+      class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4"
+      @click.self="showDelete = false"
+    >
+      <div class="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+        <h3 class="font-semibold text-red-800">{{ t('borrado.tituloDialogo') }}</h3>
+        <p class="mt-1 text-sm text-gray-600">{{ production.Folio }} · {{ production.Rancho }}</p>
+
+        <div class="mt-3 rounded-lg bg-gray-50 p-3 text-xs text-gray-700">
+          <p class="mb-1 font-medium">{{ t('borrado.seBorra') }}</p>
+          <ul class="list-inside list-disc space-y-0.5 text-gray-600">
+            <li>{{ t('borrado.itemEscenas', { n: totalScenes }) }}</li>
+            <li>{{ t('borrado.itemS3') }}</li>
+            <li>{{ t('borrado.itemDynamo') }}</li>
+          </ul>
+          <p class="mt-2 mb-1 font-medium">{{ t('borrado.seConserva') }}</p>
+          <ul class="list-inside list-disc space-y-0.5 text-gray-600">
+            <li>{{ t('borrado.itemProduccion') }}</li>
+            <li>{{ t('borrado.itemFases') }}</li>
+          </ul>
+        </div>
+
+        <p class="mt-3 rounded bg-yellow-50 px-2 py-1.5 text-xs text-yellow-800">
+          {{ t('borrado.avisoSync') }}
+        </p>
+
+        <label class="mt-3 block text-xs text-gray-600">
+          {{ t('borrado.escribeFolio', { folio: production.Folio }) }}
+          <input
+            v-model="folioConfirm"
+            type="text"
+            autocomplete="off"
+            class="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono"
+          />
+        </label>
+
+        <p v-if="deleteError" class="mt-2 rounded bg-red-50 px-2 py-1 text-xs text-red-700">
+          {{ deleteError }}
+        </p>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+                  @click="showDelete = false">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            class="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 disabled:opacity-40"
+            :disabled="!folioCoincide || deleting"
+            @click="eliminarMonitoreo"
+          >{{ deleting ? t('common.loading') : t('borrado.confirmar') }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { auth as authApi, apiErrorMessage } from '@/api/client'
+import { usePermissionsStore } from './permissions'
 
 const COOKIE_NAME = 'agro_token'
 
@@ -27,6 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('agro_user', res.username)
     // Cookie needed for EventSource (SSE) which doesn't support custom headers.
     setCookie(res.token)
+    usePermissionsStore().load()
   }
 
   function logout() {
@@ -35,6 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('agro_token')
     localStorage.removeItem('agro_user')
     clearCookie()
+    usePermissionsStore().reset()
   }
 
   return { token, username, isAuthenticated, login, logout }

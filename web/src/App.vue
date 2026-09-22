@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkerStore } from '@/stores/worker'
 import { useSyncStore } from '@/stores/sync'
 import { useProductionsStore } from '@/stores/productions'
+import { usePermissionsStore } from '@/stores/permissions'
 import { worker as workerApi } from '@/api/client'
 
 const { t, locale } = useI18n()
@@ -15,6 +16,7 @@ const auth = useAuthStore()
 const workerStore = useWorkerStore()
 const syncStore = useSyncStore()
 const prodStore = useProductionsStore()
+const permStore = usePermissionsStore()
 
 const showWorkerPanel = ref(false)
 const userMenuOpen = ref(false)
@@ -34,10 +36,12 @@ watch(
       workerStore.startPolling()
       syncStore.startEvents()
       prodStore.loadAll()
+      permStore.load()
     } else {
       workerStore.stopPolling()
       syncStore.stopEvents()
-      prodStore.reset() // no dejar datos de la sesión anterior en memoria
+      prodStore.reset()
+      permStore.reset()
     }
   },
   { immediate: true }
@@ -187,9 +191,23 @@ async function unlockWorker() {
         </button>
         <div
           v-if="userMenuOpen"
-          class="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
+          class="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
           @click.stop
         >
+          <button
+            v-if="permStore.tieneAlgunPermiso('alertas')"
+            @click="router.push({ name: 'alertas' }); userMenuOpen = false"
+            class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            {{ t('nav.alertas') }}
+          </button>
+          <button
+            v-if="permStore.tieneAlgunPermiso('admin')"
+            @click="router.push({ name: 'configuracion' }); userMenuOpen = false"
+            class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            {{ t('nav.configuracion') }}
+          </button>
           <button
             @click="logout(); userMenuOpen = false"
             class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"

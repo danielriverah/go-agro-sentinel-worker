@@ -2,12 +2,25 @@ import axios, { type AxiosError } from 'axios'
 import type {
   ArchivoItem,
   ArchivoResponse,
+  AsignacionRol,
+  CentroCostoItem,
+  FaseCultivo,
+  FaseInput,
   IAResult,
   LoginResponse,
+  PermisoCatalogo,
+  PermisosEfectivos,
   Production,
   ProductionDetail,
+  Rol,
   Scene,
   SyncStatus,
+  TimelineResponse,
+  Alerta,
+  BorradoMonitoreo,
+  PlantillaFases,
+  UsuarioAdmin,
+  UsuarioAsignaciones,
   WorkerStatus,
   WorkerStatusResponse,
 } from './types'
@@ -58,8 +71,30 @@ export const producciones = {
   get: (id: number) =>
     http.get<{ data: ProductionDetail }>(`/producciones/${id}`).then(unwrap),
 
+  // Bloquear y desbloquear escriben posible_cosecha; un trigger de la tabla
+  // deriva el campo bloqueado a partir de él.
   desbloquear: (id: number) =>
     http.post<{ data: Production }>(`/producciones/${id}/desbloquear`).then(unwrap),
+
+  bloquear: (id: number) =>
+    http.post<{ data: Production }>(`/producciones/${id}/bloquear`).then(unwrap),
+
+  timeline: (id: number) =>
+    http.get<{ data: TimelineResponse }>(`/producciones/${id}/timeline`).then(unwrap),
+
+  getFases: (id: number) =>
+    http.get<{ data: FaseCultivo[] }>(`/producciones/${id}/fases`).then(unwrap),
+
+  // Reemplaza el conjunto completo de fases; el servidor rechaza solapamientos.
+  putFases: (id: number, fases: FaseInput[]) =>
+    http.put<{ data: FaseCultivo[] }>(`/producciones/${id}/fases`, { fases }).then(unwrap),
+
+  // Destructivo e irreversible: borra el monitoreo en MySQL, S3 y DynamoDB.
+  // El folio va en el cuerpo como confirmación; el servidor lo compara.
+  eliminarMonitoreo: (id: number, folio: string) =>
+    http.delete<{ data: BorradoMonitoreo }>(`/producciones/${id}/monitoreo`, {
+      data: { folio },
+    }).then(unwrap),
 }
 
 // ── Escenas ───────────────────────────────────────────────────────────────────
@@ -124,6 +159,83 @@ export const worker = {
 
   unlock: (produccionId?: number) =>
     http.post('/worker/unlock', produccionId != null ? { produccion_id: produccionId } : {}),
+}
+
+// ── Fases: plantillas para copiar ─────────────────────────────────────────────
+
+export const fases = {
+  // Sólo producciones que YA tienen fases, con las fases incluidas para poder
+  // revisarlas antes de copiarlas.
+  plantillas: () =>
+    http.get<{ data: PlantillaFases[] }>('/fases/plantillas').then(unwrap),
+}
+
+// ── Alertas ───────────────────────────────────────────────────────────────────
+
+export const alertas = {
+  list: (params: { estado?: string; severidad?: string; produccion_id?: number; limite?: number } = {}) =>
+    http.get<{ data: Alerta[] }>('/alertas', { params }).then(unwrap),
+
+  marcarVista: (id: number) =>
+    http.post(`/alertas/${id}/vista`),
+
+  marcarResuelta: (id: number) =>
+    http.post(`/alertas/${id}/resuelta`),
+}
+
+// ── Administración ────────────────────────────────────────────────────────────
+
+export const admin = {
+  listUsuarios: () =>
+    http.get<{ data: UsuarioAdmin[] }>('/admin/usuarios').then(unwrap),
+
+  setActivo: (userId: number, activo: boolean) =>
+    http.put(`/admin/usuarios/${userId}/activo`, { activo }),
+
+  // El administrador no necesita la contraseña actual.
+  resetPassword: (userId: number, passwordNueva: string) =>
+    http.put(`/admin/usuarios/${userId}/password`, { password_nueva: passwordNueva }),
+}
+
+// ── Permisos ─────────────────────────────────────────────────────────────────
+
+export const permisos = {
+  mis: () =>
+    http.get<{ data: PermisosEfectivos }>('/auth/permisos').then(unwrap),
+
+  refrescar: () =>
+    http.post<{ data: PermisosEfectivos }>('/auth/refrescar-permisos').then(unwrap),
+}
+
+// ── Roles y asignaciones (admin) ─────────────────────────────────────────────
+
+export const roles = {
+  list: () =>
+    http.get<{ data: Rol[] }>('/admin/roles').then(unwrap),
+
+  create: (nombre: string, descripcion: string, permiso_ids: number[]) =>
+    http.post<{ data: Rol }>('/admin/roles', { nombre, descripcion, permiso_ids }).then(unwrap),
+
+  update: (id: number, nombre: string, descripcion: string, permiso_ids: number[]) =>
+    http.put(`/admin/roles/${id}`, { nombre, descripcion, permiso_ids }),
+
+  delete: (id: number) =>
+    http.delete(`/admin/roles/${id}`),
+
+  permisosCatalogo: () =>
+    http.get<{ data: PermisoCatalogo[] }>('/admin/permisos').then(unwrap),
+
+  getUsuarioPermisos: (userId: number) =>
+    http.get<{ data: UsuarioAsignaciones }>(`/admin/usuarios/${userId}/permisos`).then(unwrap),
+
+  setUsuarioRoles: (userId: number, asignaciones: AsignacionRol[]) =>
+    http.put(`/admin/usuarios/${userId}/roles`, { asignaciones }),
+
+  setUsuarioPermisos: (userId: number, asignaciones: { permiso_id: number; centro_costo_id: number | null }[]) =>
+    http.put(`/admin/usuarios/${userId}/permisos-directos`, { asignaciones }),
+
+  centrosCostos: () =>
+    http.get<{ data: CentroCostoItem[] }>('/admin/centros-costos').then(unwrap),
 }
 
 // Helpers para mensajes de error del backend

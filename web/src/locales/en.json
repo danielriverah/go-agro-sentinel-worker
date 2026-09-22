@@ -6,7 +6,31 @@
   "nav": {
     "dashboard": "Productions",
     "logout": "Sign out",
-    "language": "Language"
+    "configuracion": "Settings",
+    "language": "Language",
+    "alertas": "Alerts"
+  },
+  "config": {
+    "titulo": "Settings",
+    "subtitulo": "System user administration",
+    "usuarios": "Users",
+    "usuario": "User",
+    "estado": "Status",
+    "acciones": "Actions",
+    "activo": "Active",
+    "inactivo": "Inactive",
+    "activar": "Activate",
+    "desactivar": "Deactivate",
+    "tu": "(you)",
+    "noTeDesactives": "You cannot deactivate your own user",
+    "cambiarPassword": "Change password",
+    "nuevaPassword": "New password",
+    "minimo8": "Minimum 8 characters",
+    "sinUsuarios": "No users registered",
+    "activado": "{u} activated",
+    "desactivado": "{u} deactivated",
+    "passwordCambiada": "Password for {u} updated",
+    "sinProcedimientos": "The administration procedures do not exist in the database yet. Ask your administrator to apply phase3-usuarios-admin-procedures.sql."
   },
   "auth": {
     "login": "Sign in",
@@ -35,7 +59,9 @@
     "ia_auto_on": "Auto IA enabled — analyzed after TIF generation",
     "ia_auto_off": "Auto IA disabled",
     "scenes": "Scenes",
-    "usable_scenes": "{n} usable of {total}"
+    "usable_scenes": "{n} usable of {total}",
+    "markHarvest": "Mark possible harvest",
+    "markHarvestHint": "Marks the field as ready to harvest; it becomes blocked for further processing."
   },
   "scene": {
     "date": "Date",
@@ -124,5 +150,153 @@
     "cancel": "Cancel",
     "close": "Close",
     "confirm": "Confirm"
+  },
+  "timeline": {
+    "tab": "Trends",
+    "cargando": "Loading history...",
+    "reintentar": "Retry",
+    "nubosidad": "Cloud cover",
+    "diaCultivo": "Day of cultivation",
+    "diasACosecha": "Days to harvest",
+    "ia": "AI analysis",
+    "unSoloPunto": "Only one measurement in this range; there is no trend to show yet.",
+    "leyendaNoConfiable": "{n} day(s) without a reliable measurement: the line breaks instead of inventing a value.",
+    "vacio": {
+      "titulo": "No measurements yet",
+      "detalle": "The chart will appear once the first scene for this production is processed."
+    },
+    "resumen": {
+      "confiables": "{ok} of {total} reliable measurements",
+      "tendencia": "Trend"
+    },
+    "tendencia": {
+      "mejorando": "Improving",
+      "declinando": "Declining",
+      "estable": "Stable"
+    },
+    "rango": {
+      "semana": "Last week",
+      "mes": "Last month",
+      "todo": "All",
+      "personalizado": "Custom",
+      "anterior": "Previous range",
+      "siguiente": "Next range",
+      "desde": "From",
+      "hasta": "To",
+      "aplicar": "Apply"
+    },
+    "indice": {
+      "ndvi": "Vegetation Vigor",
+      "ndmi": "Soil Moisture",
+      "evi": "Enhanced vigor (EVI)",
+      "savi": "Soil-adjusted vigor (SAVI)",
+      "ndre": "Chlorophyll / red edge (NDRE)",
+      "gndvi": "Green vigor (GNDVI)",
+      "nbr": "Burn index (NBR)"
+    },
+    "estado": {
+      "bajo": "Low",
+      "moderado": "Moderate",
+      "vigoroso": "Vigorous",
+      "seco": "Dry",
+      "normal": "Normal",
+      "humedo": "Moist"
+    },
+    "motivo": {
+      "sin_dato_sensor": "The satellite captured no data for this area that day.",
+      "sin_params": "This scene has no computed statistics yet.",
+      "nubosidad_alta": "Too much cloud over the field: the reading is not reliable.",
+      "escena_no_usable": "Scene discarded by quality control."
+    }
+  },
+  "borrado": {
+    "zona": "Danger zone",
+    "descripcion": "Deleting the monitoring removes this production's scenes, files and records. This cannot be undone.",
+    "boton": "Delete monitoring",
+    "tituloDialogo": "Delete this production's monitoring",
+    "seBorra": "Permanently removed:",
+    "seConserva": "Kept:",
+    "itemEscenas": "{n} scene(s) with their analyses and registered files",
+    "itemS3": "All images and files stored in S3",
+    "itemDynamo": "The production and scene records in DynamoDB",
+    "itemProduccion": "The production in the ERP (only its monitoring is turned off)",
+    "itemFases": "The configured crop stages",
+    "avisoSync": "Monitoring will be turned off, so sync will not re-create it. Resuming means re-enabling it and downloading everything again.",
+    "escribeFolio": "Type {folio} to confirm:",
+    "confirmar": "Delete permanently",
+    "requiereBloqueo": "Mark the production as possible harvest first: only a closed field’s monitoring can be deleted."
+  },
+  "fases": {
+    "titulo": "Crop stages",
+    "ayuda": "Days since planting",
+    "vacio": "No stages configured. The chart is shown without bands.",
+    "sinTabla": "The crop stages table does not exist in the database yet. Ask your administrator to apply phase3-create-produccion-fases-cultivo.sql.",
+    "nombre": "Stage",
+    "diaInicio": "From",
+    "diaFin": "To",
+    "agregar": "Add stage",
+    "quitar": "Remove",
+    "guardado": "Stages saved",
+    "copiarDe": "Copy from:",
+    "copiar": "Copy",
+    "copiadas": "{n} stage(s) copied. Review and save.",
+    "origenSinFases": "That production has no stages configured.",
+    "sinPlantillas": "No production has stages configured yet.",
+    "vistaPrevia": "Stages that will be copied"
+  },
+  "alertas": {
+    "titulo": "Alerts",
+    "subtitulo": "{n} unread",
+    "sinLeer": "unread",
+    "verResueltas": "Show resolved",
+    "todasSeveridades": "All severities",
+    "vacio": "No pending alerts",
+    "sinTabla": "The alerts table does not exist in the database yet.",
+    "verDetalle": "View detail",
+    "ocultar": "Hide",
+    "resolver": "Mark resolved",
+    "verProduccion": "Go to production",
+    "accion": "Suggested action",
+    "vistaPor": "Seen by {u}",
+    "sev": {
+      "alta": "High",
+      "media": "Medium",
+      "baja": "Low"
+    },
+    "estado": {
+      "nueva": "New",
+      "vista": "Seen",
+      "resuelta": "Resolved"
+    }
+  },
+  "permisos": {
+    "sinPermiso": "You don't have permission for this action",
+    "titulo": "Roles & Permissions",
+    "roles": "Roles",
+    "permisos": "Permissions",
+    "usuarios": "User assignments",
+    "agregarRol": "Add role",
+    "crearRol": "Create role",
+    "editarRol": "Edit role",
+    "eliminarRol": "Delete role",
+    "nombre": "Name",
+    "descripcion": "Description",
+    "todosRanchos": "All ranches",
+    "seleccionarRancho": "Select ranch",
+    "rolSistema": "System role (cannot be deleted)",
+    "confirmarEliminar": "Are you sure you want to delete the role \"{nombre}\"?",
+    "permisoDirecto": "Direct permission",
+    "efectivos": "Effective permissions",
+    "origen": "Source",
+    "guardar": "Save",
+    "modulos": {
+      "producciones": "Productions",
+      "monitoreo": "Monitoring",
+      "alertas": "Alerts",
+      "fases": "Phases",
+      "escenas": "Scenes",
+      "admin": "Administration",
+      "sistema": "System"
+    }
   }
 }

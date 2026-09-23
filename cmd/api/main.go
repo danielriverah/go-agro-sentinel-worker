@@ -59,9 +59,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	s3Cfg, err := aws.NewS3Session(cfg.S3, cfg.AWS)
+	if err != nil {
+		l.Error("creating s3 session failed", "error", err)
+		os.Exit(1)
+	}
+
 	// Validate all dependencies before continuing.
 	dynamoClient := aws.NewDynamoDBClient(dynamoCfg)
-	s3Client := aws.NewS3Client(awsCfg)
+	s3Client := aws.NewS3Client(s3Cfg)
 
 	if err := health.CheckDynamoDB(ctx, dynamoClient, cfg.DynamoDB.TableProducciones); err != nil {
 		l.Error("dynamodb health check failed", "error", err)

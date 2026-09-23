@@ -80,8 +80,10 @@ type SentinelConfig struct {
 }
 
 type AWSConfig struct {
-	Region   string `yaml:"region"`
-	Endpoint string `yaml:"endpoint"`
+	Region          string `yaml:"region"`
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	SecretAccessKey string `yaml:"secret_access_key"`
 }
 
 type S3Config struct {
@@ -90,6 +92,11 @@ type S3Config struct {
 	// Region es la región AWS para S3 (ej: us-west-2).
 	// Override: S3_REGION env var. Si vacía, hereda de aws.region.
 	Region string `yaml:"region"`
+	// Credenciales específicas para S3 (opcionales).
+	// Override: S3_ACCESS_KEY_ID y S3_SECRET_ACCESS_KEY env vars.
+	// Si vacías, usan las credenciales generales de AWS.
+	AccessKeyID     string `yaml:"access_key_id"`
+	SecretAccessKey string `yaml:"secret_access_key"`
 	// PublicEndpoint rewrites presigned URLs for browser consumption.
 	// Set to "http://localhost:4566" when running LocalStack behind Docker
 	// so the browser can reach S3 via the host machine instead of the
@@ -172,6 +179,12 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("AWS_ENDPOINT_URL"); v != "" {
 		cfg.AWS.Endpoint = v
 	}
+	if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
+		cfg.AWS.AccessKeyID = v
+	}
+	if v := os.Getenv("AWS_SECRET_ACCESS_KEY"); v != "" {
+		cfg.AWS.SecretAccessKey = v
+	}
 	if v := os.Getenv("S3_BUCKET"); v != "" {
 		cfg.S3.Bucket = v
 	}
@@ -180,6 +193,12 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("S3_REGION"); v != "" {
 		cfg.S3.Region = v
+	}
+	if v := os.Getenv("S3_ACCESS_KEY_ID"); v != "" {
+		cfg.S3.AccessKeyID = v
+	}
+	if v := os.Getenv("S3_SECRET_ACCESS_KEY"); v != "" {
+		cfg.S3.SecretAccessKey = v
 	}
 	if v := os.Getenv("S3_PUBLIC_ENDPOINT"); v != "" {
 		cfg.S3.PublicEndpoint = v

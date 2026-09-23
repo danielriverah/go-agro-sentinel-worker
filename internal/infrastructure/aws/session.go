@@ -69,10 +69,11 @@ func NewSession(cfg config.AWSConfig) (awssdk.Config, error) {
 	return awsCfg, nil
 }
 
-// NewS3Session builds an AWS config specifically for S3 with independent region.
+// NewS3Session builds an AWS config specifically for S3 with independent region and credentials.
 // Uses cfg.S3.Region instead of the general AWS region, allowing S3 to be in a
 // different region than other services (e.g., S3 in us-west-2, DynamoDB in us-east-1).
 // If cfg.S3.Region is empty, falls back to cfg.AWS.Region.
+// Also uses S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY if configured.
 func NewS3Session(s3Cfg config.S3Config, awsCfg config.AWSConfig) (awssdk.Config, error) {
 	region := s3Cfg.Region
 	if region == "" {
@@ -84,6 +85,23 @@ func NewS3Session(s3Cfg config.S3Config, awsCfg config.AWSConfig) (awssdk.Config
 
 	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(region),
+	}
+
+	// Use explicit S3 credentials if provided (from S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY)
+	// Fall back to AWS credentials if not set
+	accessKeyID := s3Cfg.AccessKeyID
+	secretAccessKey := s3Cfg.SecretAccessKey
+	if accessKeyID == "" && awsCfg.AccessKeyID != "" {
+		accessKeyID = awsCfg.AccessKeyID
+	}
+	if secretAccessKey == "" && awsCfg.SecretAccessKey != "" {
+		secretAccessKey = awsCfg.SecretAccessKey
+	}
+
+	if accessKeyID != "" && secretAccessKey != "" {
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
+		))
 	}
 
 	if awsCfg.Endpoint != "" {

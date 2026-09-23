@@ -47,15 +47,5 @@ export const useSyncStore = defineStore('sync', () => {
     }
   }
 
-  // Estado optimista: marca running=true localmente sin llamar a la API.
-  // Se usa cuando el countdown llega a 0 — el poll en 1.5s confirmará el estado real.
-  function markRunning() {
-    if (status.value) {
-      status.value = { ...status.value, running: true }
-    }
-    setTimeout(refresh, 1500)
-    setTimeout(refresh, 4000)
-  }
-
-  return { status, triggering, triggerMsg, refresh, startEvents, stopEvents, trigger, markRunning }
+  return { status, triggering, triggerMsg, refresh, startEvents, stopEvents, trigger }
 })

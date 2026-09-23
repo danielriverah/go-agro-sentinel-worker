@@ -154,6 +154,7 @@ logging:
 
 	t.Setenv("S3_BUCKET", "env-bucket")
 	t.Setenv("MYSQL_HOST", "db.example.com")
+	t.Setenv("MYSQL_DB", "erp_test")
 	t.Setenv("MYSQL_PASSWORD", "secret")
 
 	cfg, err := Load(path)
@@ -166,6 +167,9 @@ logging:
 	}
 	if cfg.MySQL.Host != "db.example.com" {
 		t.Errorf("mysql.host = %q, want db.example.com (env override)", cfg.MySQL.Host)
+	}
+	if cfg.MySQL.Database != "erp_test" {
+		t.Errorf("mysql.database = %q, want erp_test (MYSQL_DB env override)", cfg.MySQL.Database)
 	}
 	if cfg.MySQL.Password != "secret" {
 		t.Errorf("mysql.password should come from env")

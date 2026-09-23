@@ -66,9 +66,6 @@ func (r *SceneRepo) Upsert(ctx context.Context, s *domain.Scene) error {
 		nullString(s.UrlsBandas), nullString(s.BaseBands),
 		nullUint64Ptr(s.MultibandRefEscenaID),
 	}
-	if r.hasImageBBox {
-		args = append(args, nullJSON(s.ImageBBox))
-	}
 	args = append(args, createdAt, now)
 
 	if _, err := r.db.ExecContext(ctx, r.upsertQ, args...); err != nil {
@@ -114,14 +111,9 @@ ON DUPLICATE KEY UPDATE
 `
 
 func buildSceneUpsert(withImageBBox bool) string {
-	if !withImageBBox {
-		return strings.NewReplacer("IMG_COL", "", "IMG_VAL", "", "IMG_UPD", "").Replace(sceneUpsertTmpl)
-	}
-	return strings.NewReplacer(
-		"IMG_COL", "\n\timage_bbox,",
-		"IMG_VAL", " ?,",
-		"IMG_UPD", "\n\timage_bbox               = VALUES(image_bbox),",
-	).Replace(sceneUpsertTmpl)
+	// image_bbox belongs to the database trigger. Omit it on INSERT/UPDATE,
+	// including sync upserts with empty in-memory georeferencing.
+	return strings.NewReplacer("IMG_COL", "", "IMG_VAL", "", "IMG_UPD", "").Replace(sceneUpsertTmpl)
 }
 
 const sceneSelectTmpl = `
@@ -618,6 +610,11 @@ func scanScene(row rowScanner, withImageBBox bool) (*domain.Scene, error) {
 // The result includes the scene's ID, and the origin production's tile_bbox and
 // S3 prefix so the worker can check containment and download if it fits.
 func (r *SceneRepo) FindMultibandSources(ctx context.Context, sceneName string, excludeProduccionID int64) ([]*domain.MultibandSource, error) {
+	// Without this column we cannot distinguish an original from a detached
+	// reused raster. Process locally instead of risking incorrect placement.
+	if !r.hasImageBBox {
+		return nil, nil
+	}
 	const q = `
 SELECT e.s3_monitoring_escena_id,
        p.tile_bbox,
@@ -628,7 +625,10 @@ JOIN s3_monitoring_producciones p ON e.s3_monitoring_produccion_id = p.s3_monito
 WHERE e.scene_name = ?
   AND p.produccion_id != ?
   AND e.multiband_ref_escena_id IS NULL
-  AND e.truth_tif_exists = 1`
+  AND e.image_bbox IS NULL
+  AND e.truth_tif_exists = 1
+  AND e.status = 'COMPLETED'
+ORDER BY e.s3_monitoring_escena_id ASC`
 
 	rows, err := r.db.QueryContext(ctx, q, sceneName, excludeProduccionID)
 	if err != nil {

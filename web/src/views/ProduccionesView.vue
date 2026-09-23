@@ -8,6 +8,7 @@ import { useNavContext, scrollToElement } from '@/composables/useNavContext'
 import { useSyncStore } from '@/stores/sync'
 import { useWorkerStore } from '@/stores/worker'
 import { useProductionsStore } from '@/stores/productions'
+import { usePermissionsStore } from '@/stores/permissions'
 import type { Production } from '@/api/types'
 
 const { t, locale } = useI18n()
@@ -15,6 +16,7 @@ const router = useRouter()
 const syncStore = useSyncStore()
 const workerStore = useWorkerStore()
 const prodStore = useProductionsStore()
+const permStore = usePermissionsStore()
 
 const productions = computed(() => prodStore.productions)
 const loading = computed(() => prodStore.loading)
@@ -29,6 +31,8 @@ const runAllMsg      = ref('')
 const cancellingAll  = ref(false)
 const cancelAllMsg   = ref('')
 const cancellingCard = ref(false)
+const canRunSync = computed(() => permStore.puede('sync.ejecutar'))
+const canControlWorker = computed(() => permStore.puede('worker.controlar'))
 
 onMounted(() => {
   workerStore.refresh()
@@ -267,6 +271,7 @@ watch(productions, revealLastVisited, { immediate: true })
 
 async function ponerAlCorriente(prod: Production, e: MouseEvent) {
   e.stopPropagation()
+  if (!permStore.puede('monitoreo.worker', prod.CentroCostoID)) return
   if (triggeringProd.value.has(prod.ID)) return
   triggeringProd.value.add(prod.ID)
   triggerErrors.value.delete(prod.ID)
@@ -289,6 +294,7 @@ async function ponerAlCorriente(prod: Production, e: MouseEvent) {
 
 async function toggleIAAuto(prod: Production, e: MouseEvent) {
   e.stopPropagation()
+  if (!permStore.puede('producciones.editar', prod.CentroCostoID)) return
   if (togglingIA.value.has(prod.ID)) return
   togglingIA.value.add(prod.ID)
   try {
@@ -300,7 +306,7 @@ async function toggleIAAuto(prod: Production, e: MouseEvent) {
 }
 
 async function triggerRunAll() {
-  if (runningAll.value || workerStore.blockIndividualTrigger) return
+  if (!canControlWorker.value || runningAll.value || workerStore.blockIndividualTrigger) return
   runningAll.value = true
   runAllMsg.value = ''
   try {
@@ -316,6 +322,7 @@ async function triggerRunAll() {
 }
 
 async function cancelRunAll() {
+  if (!canControlWorker.value) return
   if (cancellingAll.value) return
   if (workerStore.stopPending) {
     try { await workerApi.cancel(undefined, true) } catch { /* silencioso */ }
@@ -335,6 +342,7 @@ async function cancelRunAll() {
 
 async function cancelFromCard(e: MouseEvent) {
   e.stopPropagation()
+  if (!canControlWorker.value) return
   if (cancellingCard.value) return
   if (workerStore.stopPending) {
     try { await workerApi.cancel(undefined, true) } catch { /* silencioso */ }
@@ -361,7 +369,6 @@ watch(
 const now = ref(Date.now())
 let nowTimer: ReturnType<typeof setInterval> | null = null
 let workerOptimisticFired = false
-let syncOptimisticFired = false
 
 // Al llegar a 0 activamos el estado optimista local, igual que si se hubiera
 // pulsado el botón. El SSE confirma el lock real en ≤2s.
@@ -374,17 +381,6 @@ function checkCountdownFire() {
       workerStore.markGlobalTriggered()
     } else if (s !== null && s > 5) {
       workerOptimisticFired = false
-    }
-  }
-
-  const syncNext = syncStore.status?.next_run
-  if (syncNext) {
-    const s = rawSecsUntil(syncNext)
-    if (s !== null && s <= 0 && !syncOptimisticFired && !syncStore.status?.running) {
-      syncOptimisticFired = true
-      syncStore.markRunning()
-    } else if (s !== null && s > 5) {
-      syncOptimisticFired = false
     }
   }
 }
@@ -569,8 +565,9 @@ function workerProgressPct(ws: { scenes_done: number; scenes_total: number } | n
         <div class="flex items-center gap-2">
           <button
             @click="syncStore.trigger()"
-            :disabled="syncStore.triggering || syncStore.status?.running"
-            class="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors flex items-center gap-1.5"
+            :disabled="!canRunSync || syncStore.triggering || syncStore.status?.running"
+            :title="!canRunSync ? t('permisos.sinPermiso') : undefined"
+            class="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
           >
             <svg v-if="syncStore.triggering" class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -654,7 +651,8 @@ function workerProgressPct(ws: { scenes_done: number; scenes_total: number } | n
           <button
             v-if="workerStore.isGlobalProcessing"
             @click="cancelRunAll"
-            :disabled="cancellingAll"
+            :disabled="!canControlWorker || cancellingAll"
+            :title="!canControlWorker ? t('permisos.sinPermiso') : undefined"
             class="text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 disabled:opacity-60"
             :class="workerStore.stopPending
               ? 'border-orange-200 text-orange-600 hover:bg-orange-50'
@@ -665,9 +663,9 @@ function workerProgressPct(ws: { scenes_done: number; scenes_total: number } | n
           <button
             v-else
             @click="triggerRunAll"
-            :disabled="runningAll || blockIndividualTrigger"
-            :title="anyProductionProcessing ? 'Una producción está en proceso' : undefined"
-            class="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors flex items-center gap-1.5"
+            :disabled="!canControlWorker || runningAll || blockIndividualTrigger"
+            :title="!canControlWorker ? t('permisos.sinPermiso') : anyProductionProcessing ? 'Una producción está en proceso' : undefined"
+            class="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
           >
             <svg v-if="runningAll" class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -806,7 +804,8 @@ function workerProgressPct(ws: { scenes_done: number; scenes_total: number } | n
                       </span>
                       <button
                         @click.stop="cancelFromCard"
-                        :disabled="cancellingCard"
+                        :disabled="!canControlWorker || cancellingCard"
+                        :title="!canControlWorker ? t('permisos.sinPermiso') : undefined"
                         class="text-xs px-1.5 py-0.5 rounded border transition-colors disabled:opacity-60"
                         :class="workerStore.stopPending
                           ? 'border-orange-200 text-orange-500 hover:bg-orange-50'
@@ -844,12 +843,12 @@ function workerProgressPct(ws: { scenes_done: number; scenes_total: number } | n
                       <button
                         v-if="tifStatus(prod) !== 'ok'"
                         @click.stop="ponerAlCorriente(prod, $event)"
-                        :disabled="triggeringProd.has(prod.ID) || workerStore.isProcessingProduction(prod.ProduccionID) || blockIndividualTrigger"
+                        :disabled="!permStore.puede('monitoreo.worker', prod.CentroCostoID) || triggeringProd.has(prod.ID) || workerStore.isProcessingProduction(prod.ProduccionID) || blockIndividualTrigger"
                         class="flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs transition-colors"
-                        :class="triggeringProd.has(prod.ID) || workerStore.isProcessingProduction(prod.ProduccionID) || blockIndividualTrigger
+                        :class="!permStore.puede('monitoreo.worker', prod.CentroCostoID) || triggeringProd.has(prod.ID) || workerStore.isProcessingProduction(prod.ProduccionID) || blockIndividualTrigger
                           ? 'border-gray-200 text-gray-300 cursor-not-allowed'
                           : 'border-green-200 text-green-600 hover:bg-green-50'"
-                        :title="workerStore.isGlobalProcessing ? 'Worker global en ejecución' : anyProductionProcessing ? 'Otra producción en proceso' : t('production.process')"
+                        :title="!permStore.puede('monitoreo.worker', prod.CentroCostoID) ? t('permisos.sinPermiso') : workerStore.isGlobalProcessing ? 'Worker global en ejecución' : anyProductionProcessing ? 'Otra producción en proceso' : t('production.process')"
                       >
                         <svg v-if="triggeringProd.has(prod.ID)" class="animate-spin h-2.5 w-2.5" fill="none" viewBox="0 0 24 24">
                           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -874,12 +873,14 @@ function workerProgressPct(ws: { scenes_done: number; scenes_total: number } | n
                       </span>
                       <button
                         @click.stop="toggleIAAuto(prod, $event)"
-                        :disabled="togglingIA.has(prod.ID)"
+                        :disabled="!permStore.puede('producciones.editar', prod.CentroCostoID) || togglingIA.has(prod.ID)"
                         class="ml-auto flex items-center gap-0.5 text-xs rounded px-1 py-0.5 transition-colors border"
-                        :class="prod.IAuto
+                        :class="!permStore.puede('producciones.editar', prod.CentroCostoID)
+                          ? 'border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : prod.IAuto
                           ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
                           : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100'"
-                        :title="prod.IAuto ? t('production.ia_auto_on') : t('production.ia_auto_off')"
+                        :title="!permStore.puede('producciones.editar', prod.CentroCostoID) ? t('permisos.sinPermiso') : prod.IAuto ? t('production.ia_auto_on') : t('production.ia_auto_off')"
                       >
                         <svg v-if="togglingIA.has(prod.ID)" class="animate-spin h-2.5 w-2.5" fill="none" viewBox="0 0 24 24">
                           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>

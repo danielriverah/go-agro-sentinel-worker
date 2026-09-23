@@ -170,14 +170,11 @@ type Handlers struct {
 	Monitoreo               MonitoreoDeleter
 	DynamoTablaProducciones string
 	DynamoTablaEscenas      string
-	// DeleteAllowedUserIDs limita quién puede eliminar un monitoreo. Vacío =
-	// nadie: la operación es irreversible, así que por omisión queda cerrada.
-	DeleteAllowedUserIDs []int64
 	Log                  *slog.Logger
-	DB          DBPinger
-	S3Health    S3Checker
-	DynamoDB    DynamoDBChecker
-	GDAL        GDALExecutor
+	DB                   DBPinger
+	S3Health             S3Checker
+	DynamoDB             DynamoDBChecker
+	GDAL                 GDALExecutor
 	// Permisos habilita el filtrado por rancho en endpoints de listado. nil o
 	// Disponible()==false = modo permisivo (sin filtrar), para no romper
 	// despliegues donde las tablas de permisos aún no existen.
@@ -837,6 +834,10 @@ func (h *Handlers) TriggerEscenaAnalisis(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Verify ia_req.json exists by checking the scene files table.
+	if !scene.Usable {
+		Error(w, http.StatusUnprocessableEntity, "escena no apta para análisis: revisa nubosidad y cobertura de datos")
+		return
+	}
 	iaReqFile, err := h.Files.GetByTipo(r.Context(), escenaID, string(domain.FileIAReq))
 	if err != nil || iaReqFile == nil {
 		Error(w, http.StatusUnprocessableEntity, "ia_req.json aun no generado para esta escena — procesa la escena primero")

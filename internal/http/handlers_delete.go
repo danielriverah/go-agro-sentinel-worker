@@ -25,6 +25,7 @@ type DynamoDeleter interface {
 type MonitoreoDeleter interface {
 	EliminarMonitoreo(ctx context.Context, monitoringID uint, produccionID int64) (database.ResumenBorradoMySQL, error)
 	HasImageBBox() bool
+	CheckDependents(ctx context.Context, monitoringID uint) error
 }
 
 type eliminarMonitoreoRequest struct {
@@ -34,12 +35,12 @@ type eliminarMonitoreoRequest struct {
 }
 
 type eliminarMonitoreoResponse struct {
-	ProduccionID   int64                        `json:"produccion_id"`
-	Folio          string                       `json:"folio"`
-	S3Objetos      int                          `json:"s3_objetos_borrados"`
-	DynamoEscenas  int                          `json:"dynamodb_escenas_borradas"`
-	MySQL          database.ResumenBorradoMySQL `json:"mysql"`
-	Advertencia    string                       `json:"advertencia,omitempty"`
+	ProduccionID  int64                        `json:"produccion_id"`
+	Folio         string                       `json:"folio"`
+	S3Objetos     int                          `json:"s3_objetos_borrados"`
+	DynamoEscenas int                          `json:"dynamodb_escenas_borradas"`
+	MySQL         database.ResumenBorradoMySQL `json:"mysql"`
+	Advertencia   string                       `json:"advertencia,omitempty"`
 }
 
 // EliminarMonitoreo maneja DELETE /api/v1/producciones/{id}/monitoreo.
@@ -48,12 +49,21 @@ type eliminarMonitoreoResponse struct {
 // y sus fases de cultivo, y apaga producciones.monitoring para que el sync no
 // lo recree.
 //
+// Requiere permiso 'monitoreo.eliminar' asignado a través de roles o permisos
+// directos en la tabla de permisos. El permiso se valida a nivel del rancho
+// (centro_costo_id) de la producción.
+//
 // Orden: desvincular + S3 -> DynamoDB -> MySQL. No puede ser atómico entre tres
 // sistemas, así que se elige el orden cuyo fallo intermedio es menos dañino:
 // registros visibles y reintentables antes que archivos huérfanos invisibles.
 func (h *Handlers) EliminarMonitoreo(w http.ResponseWriter, r *http.Request) {
 	prod, ok := h.produccionDesdeRuta(w, r)
 	if !ok {
+		return
+	}
+
+	// Verificar permiso monitoreo.eliminar para esta producción (per-rancho)
+	if !h.verificarPermisoEliminar(w, r, prod.MonitoringID) {
 		return
 	}
 
@@ -99,6 +109,10 @@ func (h *Handlers) EliminarMonitoreo(w http.ResponseWriter, r *http.Request) {
 	defer lock.Release()
 
 	ctx := r.Context()
+	if err := h.Monitoreo.CheckDependents(ctx, prod.ID); err != nil {
+		Error(w, http.StatusConflict, err.Error())
+		return
+	}
 	resp := eliminarMonitoreoResponse{ProduccionID: prod.ProduccionID, Folio: prod.Folio}
 
 	// 1. S3 primero: un fallo posterior deja registros visibles y reintentables.
@@ -150,4 +164,47 @@ func (h *Handlers) EliminarMonitoreo(w http.ResponseWriter, r *http.Request) {
 		"mysql_escenas", resumen.Escenas, "dependientes", resumen.Dependientes)
 
 	JSON(w, http.StatusOK, resp)
+}
+
+// verificarPermisoEliminar valida que el usuario tiene el permiso 'monitoreo.eliminar'
+// para el rancho (centro_costo_id) de la producción. Retorna false si:
+// - La tabla de permisos no existe (modo permisivo)
+// - El usuario no tiene el permiso asignado
+func (h *Handlers) verificarPermisoEliminar(w http.ResponseWriter, r *http.Request, monitoringID uint) bool {
+	// Si los permisos no están disponibles, modo permisivo (backward compat)
+	if h.Permisos == nil || !h.Permisos.Disponible() {
+		return true
+	}
+
+	// Obtener claims del usuario
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		Error(w, http.StatusUnauthorized, "autenticación requerida")
+		return false
+	}
+
+	// Resolver el centro_costo_id de la producción
+	ccID, err := h.Productions.GetCentroCostoByMonitoringID(r.Context(), monitoringID)
+	if err != nil {
+		h.Log.Error("resolving centro_costo for monitoring", "monitoring_id", monitoringID, "error", err)
+		Error(w, http.StatusInternalServerError, "error verificando permisos")
+		return false
+	}
+
+	// Cargar permisos del usuario
+	perms, err := h.Permisos.CargarPermisos(r.Context(), claims.UserID)
+	if err != nil {
+		h.Log.Error("loading permissions", "usuario_id", claims.UserID, "error", err)
+		Error(w, http.StatusInternalServerError, "error verificando permisos")
+		return false
+	}
+
+	// Verificar que tiene el permiso monitoreo.eliminar para este rancho
+	if !perms.TienePermiso("monitoreo.eliminar", ccID) {
+		Error(w, http.StatusForbidden,
+			"no tienes el permiso 'monitoreo.eliminar' para este rancho; pídele a un administrador que lo asigne")
+		return false
+	}
+
+	return true
 }

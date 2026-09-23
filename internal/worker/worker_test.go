@@ -221,7 +221,6 @@ func (m *mockBandResolver) ResolveBands(ctx context.Context, produccionID int64,
 	return m.bands, m.sclHref, nil
 }
 
-
 // gdalMockExecutor fakes every GDAL command the pipeline shells out to,
 // without running real GDAL. It writes an empty file at the conventional
 // output path for warp/translate/calc/dem commands, and for gdalinfo
@@ -257,6 +256,28 @@ func (m *gdalMockExecutor) Run(ctx context.Context, command string, args []strin
 			return "", "", err
 		}
 	case "gdal_calc.py", "python3":
+		if len(args) >= 6 && args[0] == "-c" && args[2] == "prepare" {
+			var total, valid int64
+			for i, n := range m.cloudBuckets {
+				total += n
+				if i > 0 {
+					valid += n
+				}
+			}
+			cloud := 0.0
+			if valid > 0 {
+				cloud = float64(m.cloudBuckets[3]+m.cloudBuckets[8]+m.cloudBuckets[9]+m.cloudBuckets[10]) * 100 / float64(valid)
+			}
+			result := map[string]any{"total_pixels": total, "valid_pixels": valid, "has_scl": true, "source": "scl_and_masks", "nodata_pct": float64(total-valid) * 100 / float64(total), "valid_pct": float64(valid) * 100 / float64(total), "nube_pct": cloud}
+			data, err := json.Marshal(result)
+			if err != nil {
+				return "", "", err
+			}
+			if err := os.WriteFile(args[len(args)-1], []byte("fake"), 0o644); err != nil {
+				return "", "", err
+			}
+			return string(data), "", nil
+		}
 		for _, a := range args {
 			if strings.HasPrefix(a, "--outfile=") {
 				outputPath := strings.TrimPrefix(a, "--outfile=")
@@ -513,16 +534,16 @@ func TestProcessScene_AboveCloudThreshold_NaturalOnly(t *testing.T) {
 	if final.Usable {
 		t.Error("expected Usable = false for 40%% cloud cover")
 	}
-	if final.ParamsExists {
-		t.Error("expected ParamsExists = false when only natural is generated")
+	if !final.ParamsExists {
+		t.Error("expected quality report for a rejected scene")
 	}
 
 	// multiband.tif (truth_tif) + natural.png (image) only.
-	if len(h.fileRepo.created) != 2 {
-		t.Errorf("registered files = %d, want 2 (multiband + natural)", len(h.fileRepo.created))
+	if len(h.fileRepo.created) != 3 {
+		t.Errorf("registered files = %d, want 3 (multiband + natural + quality report)", len(h.fileRepo.created))
 	}
 	for _, f := range h.fileRepo.created {
-		if f.Tipo != "truth_tif" && f.Tipo != "image" {
+		if f.Tipo != "truth_tif" && f.Tipo != "image" && f.Tipo != "params" {
 			t.Errorf("unexpected file tipo registered: %v", f.Tipo)
 		}
 	}
@@ -630,4 +651,3 @@ func TestProcessScene_HistoricalChain_UsesPreviousParams(t *testing.T) {
 		t.Errorf("unexpected params s3 key: %s", paramsPath)
 	}
 }
-

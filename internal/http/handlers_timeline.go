@@ -296,6 +296,10 @@ func parseIndexMeans(raw string) map[string]float64 {
 // classifyRow decides whether a scene's readings can be trusted, and why not
 // when they cannot.
 func classifyRow(row *domain.TimelineRow, valores map[string]float64) (bool, string) {
+	var params processing.Params
+	if json.Unmarshal([]byte(row.ParamsJSON), &params) == nil && params.Quality != nil && !params.Quality.Usable {
+		return false, params.Quality.Reason
+	}
 	if row.ProductionCloud != nil && *row.ProductionCloud == noDataCloud {
 		return false, "sin_dato_sensor"
 	}

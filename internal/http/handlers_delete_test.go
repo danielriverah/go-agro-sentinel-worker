@@ -17,11 +17,12 @@ import (
 // Los mocks anotan el orden real de las llamadas: en una operación que no
 // puede ser atómica entre tres sistemas, el orden ES la garantía.
 type deleteSpy struct {
-	orden      []string
-	s3Err      error
-	dynamoErr  error
-	mysqlErr   error
-	sinBBox    bool
+	orden     []string
+	s3Err     error
+	dynamoErr error
+	mysqlErr  error
+	depErr    error
+	sinBBox   bool
 }
 
 func (s *deleteSpy) DeletePrefix(ctx context.Context, bucket, prefix string) (int, error) {
@@ -54,6 +55,11 @@ func (s *deleteSpy) EliminarMonitoreo(ctx context.Context, mid uint, pid int64) 
 }
 
 func (s *deleteSpy) HasImageBBox() bool { return !s.sinBBox }
+
+func (s *deleteSpy) CheckDependents(ctx context.Context, mid uint) error {
+	s.orden = append(s.orden, "check_dependents")
+	return s.depErr
+}
 
 func deleteHandlers(spy *deleteSpy) *Handlers {
 	return deleteHandlersCon(spy, true)
@@ -145,6 +151,23 @@ func TestEliminarMonitoreoRechazaSinImageBBox(t *testing.T) {
 	}
 }
 
+func TestEliminarMonitoreoRechazaDependientesSinImageBBox(t *testing.T) {
+	requiereLocks(t)
+
+	spy := &deleteSpy{depErr: errors.New("dependientes sin image_bbox")}
+	h := deleteHandlers(spy)
+
+	w := borrar(t, h, `{"folio":"CSJ-001"}`)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", w.Code)
+	}
+	quiero := []string{"check_dependents"}
+	if len(spy.orden) != len(quiero) || spy.orden[0] != quiero[0] {
+		t.Errorf("no debió borrar nada con dependientes incompletos, orden = %v", spy.orden)
+	}
+}
+
 func TestEliminarMonitoreoOrdenS3AntesQueMySQL(t *testing.T) {
 	requiereLocks(t)
 
@@ -156,7 +179,7 @@ func TestEliminarMonitoreoOrdenS3AntesQueMySQL(t *testing.T) {
 		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
 	}
 
-	quiero := []string{"s3", "dynamo_escenas", "dynamo_produccion", "mysql"}
+	quiero := []string{"check_dependents", "s3", "dynamo_escenas", "dynamo_produccion", "mysql"}
 	if len(spy.orden) != len(quiero) {
 		t.Fatalf("orden = %v, want %v", spy.orden, quiero)
 	}

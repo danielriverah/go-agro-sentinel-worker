@@ -155,10 +155,10 @@ start_services() {
         sleep 1
     done
 
-    log_info "Iniciando LocalStack..."
-    docker-compose -f "$PROJECT_ROOT/docker-compose.yml" up -d localstack
+    log_info "Iniciando AWS mock externo..."
+    docker-compose -f "$PROJECT_ROOT/docker-compose.external-aws.yml" up -d aws-mock
     sleep 5  # LocalStack tarda un poco en iniciarse
-    log_success "LocalStack iniciado"
+    log_success "AWS mock externo iniciado"
 
     log_info "Iniciando API..."
     docker-compose -f "$PROJECT_ROOT/docker-compose.yml" up -d api

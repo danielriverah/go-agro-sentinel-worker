@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNavContext } from '@/composables/useNavContext'
+import { usePermissionsStore } from '@/stores/permissions'
+
+const configPermissions = ['usuarios.ver', 'usuarios.administrar', 'roles.administrar']
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -45,18 +48,29 @@ const router = createRouter({
       path: '/configuracion',
       name: 'configuracion',
       component: () => import('@/views/ConfiguracionView.vue'),
+      meta: { anyPermission: configPermissions },
     },
   ],
 })
 
 // Guard global: rutas no públicas requieren sesión activa
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.name === 'login' && auth.isAuthenticated) {
     return { name: 'dashboard' }
+  }
+  const anyPermission = to.meta.anyPermission
+  if (!to.meta.public && auth.isAuthenticated && Array.isArray(anyPermission)) {
+    const permisos = usePermissionsStore()
+    if (!permisos.loaded) {
+      await permisos.refrescar()
+    }
+    if (!anyPermission.some((p) => typeof p === 'string' && permisos.puede(p))) {
+      return { name: 'dashboard' }
+    }
   }
 })
 

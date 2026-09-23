@@ -29,18 +29,14 @@ func TestSceneUpsertPlaceholdersMatchColumns(t *testing.T) {
 				t.Errorf("columnas = %d, placeholders = %d (deben coincidir)\n%s", cols, placeholders, q)
 			}
 
-			// 21 campos base + fecha_creacion + fecha_actualizacion, más
-			// image_bbox cuando la columna existe.
+			// image_bbox is owned by the trigger, never written by upserts.
 			want := 23
-			if withBBox {
-				want = 24
-			}
 			if cols != want {
 				t.Errorf("columnas = %d, want %d", cols, want)
 			}
 
-			if got := strings.Contains(q, "image_bbox"); got != withBBox {
-				t.Errorf("image_bbox presente = %v, want %v", got, withBBox)
+			if strings.Contains(q, "image_bbox") {
+				t.Error("upsert must not overwrite trigger-owned image_bbox")
 			}
 		})
 	}

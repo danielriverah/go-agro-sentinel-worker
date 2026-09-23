@@ -224,12 +224,11 @@ func (s *Service) updateSceneFromIndexedFiles(ctx context.Context, scene *domain
 	cc := p.CloudCoverBBox
 	productionCloud := &cc
 	u := cc <= cloudCoverUsableThreshold
-	usable := &u
-	var analysis *bool
-	if u {
-		t := true
-		analysis = &t
+	if p.Quality != nil {
+		u = p.Quality.Usable && p.Quality.NoDataPct <= processing.MaxNoDataPct
 	}
+	usable := &u
+	analysis := &u
 
 	if err := s.sceneRepo.UpdateFromParams(ctx, scene.ID, productionCloud, usable, analysis); err != nil {
 		s.logger.Warn("updating scene from params failed",

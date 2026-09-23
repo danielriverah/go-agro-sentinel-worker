@@ -11,15 +11,19 @@ import (
 )
 
 type PermissionRepo struct {
-	db     *sql.DB
-	exists bool
-	cache  sync.Map // map[int64]*auth.PermisosUsuario
+	db                         *sql.DB
+	exists                     bool
+	hasCentroCostoTipo         bool
+	hasCentroCostoTipoCatalogo bool
+	cache                      sync.Map // map[int64]*auth.PermisosUsuario
 }
 
 func NewPermissionRepo(db *sql.DB) *PermissionRepo {
 	return &PermissionRepo{
-		db:     db,
-		exists: tableExists(db, "auth_permisos"),
+		db:                         db,
+		exists:                     tableExists(db, "auth_permisos"),
+		hasCentroCostoTipo:         columnExists(db, "centros_costos", "tipo"),
+		hasCentroCostoTipoCatalogo: columnExists(db, "centros_costos", "tipo_centro_costo_id") && tableExists(db, "tipos_centros_costos"),
 	}
 }
 
@@ -490,7 +494,10 @@ func (r *PermissionRepo) GetUsuarioAsignaciones(ctx context.Context, usuarioID i
 		return nil, auth.ErrPermisosMissing
 	}
 
-	out := &UsuarioAsignaciones{}
+	out := &UsuarioAsignaciones{
+		Roles:    []AsignacionRolDetalle{},
+		Directos: []AsignacionPermisoDetalle{},
+	}
 
 	// Roles
 	const rq = `
@@ -560,7 +567,7 @@ type CentroCostoItem struct {
 }
 
 func (r *PermissionRepo) ListCentrosCostos(ctx context.Context) ([]CentroCostoItem, error) {
-	const q = `SELECT centro_costo_id, nombre FROM centros_costos ORDER BY nombre`
+	q := centrosCostosSelectorQuery(r.hasCentroCostoTipo, r.hasCentroCostoTipoCatalogo)
 	rows, err := r.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
@@ -576,6 +583,20 @@ func (r *PermissionRepo) ListCentrosCostos(ctx context.Context) ([]CentroCostoIt
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+func centrosCostosSelectorQuery(hasTipo bool, hasTipoCatalogo bool) string {
+	if hasTipoCatalogo {
+		return `SELECT cc.centro_costo_id, cc.nombre
+FROM centros_costos cc
+JOIN tipos_centros_costos tcc ON tcc.tipo_centro_costo_id = cc.tipo_centro_costo_id
+WHERE UPPER(tcc.nombre) = 'RANCHOS'
+ORDER BY cc.nombre`
+	}
+	if hasTipo {
+		return `SELECT centro_costo_id, nombre FROM centros_costos WHERE LOWER(tipo) = 'rancho' ORDER BY nombre`
+	}
+	return `SELECT centro_costo_id, nombre FROM centros_costos ORDER BY nombre`
 }
 
 // protegerUltimoSuperadmin checks that we're not removing the last

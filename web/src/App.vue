@@ -20,10 +20,13 @@ const permStore = usePermissionsStore()
 
 const showWorkerPanel = ref(false)
 const userMenuOpen = ref(false)
+const configPermissions = ['usuarios.ver', 'usuarios.administrar', 'roles.administrar']
 
 const isPublic = computed(() => !!route.meta?.public)
 const globalStatus = computed(() => workerStore.status.global)
 const isProcessing = computed(() => globalStatus.value?.phase === 'processing')
+const canOpenConfig = computed(() => configPermissions.some((p) => permStore.puede(p)))
+const canControlWorker = computed(() => permStore.puede('worker.controlar'))
 
 // Arrancar y detener con la sesión, no en el montaje: App.vue se monta una sola
 // vez, así que al entrar por /login sin sesión el onMounted no encontraba nada
@@ -36,7 +39,7 @@ watch(
       workerStore.startPolling()
       syncStore.startEvents()
       prodStore.loadAll()
-      permStore.load()
+      permStore.refrescar()
     } else {
       workerStore.stopPolling()
       syncStore.stopEvents()
@@ -112,10 +115,12 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 async function cancelWorker() {
+  if (!canControlWorker.value) return
   try { await workerApi.cancel() } catch { /* ignore */ }
   await workerStore.refresh()
 }
 async function unlockWorker() {
+  if (!canControlWorker.value) return
   try { await workerApi.unlock() } catch { /* ignore */ }
   await workerStore.refresh()
 }
@@ -202,7 +207,7 @@ async function unlockWorker() {
             {{ t('nav.alertas') }}
           </button>
           <button
-            v-if="permStore.tieneAlgunPermiso('admin')"
+            v-if="canOpenConfig"
             @click="router.push({ name: 'configuracion' }); userMenuOpen = false"
             class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
@@ -283,13 +288,17 @@ async function unlockWorker() {
             <button
               v-if="isProcessing"
               @click="cancelWorker"
-              class="flex-1 text-xs px-2 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+              :disabled="!canControlWorker"
+              :title="!canControlWorker ? t('permisos.sinPermiso') : undefined"
+              class="flex-1 text-xs px-2 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {{ t('worker.cancel') }}
             </button>
             <button
               @click="unlockWorker"
-              class="flex-1 text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              :disabled="!canControlWorker"
+              :title="!canControlWorker ? t('permisos.sinPermiso') : undefined"
+              class="flex-1 text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {{ t('worker.unlock') }}
             </button>

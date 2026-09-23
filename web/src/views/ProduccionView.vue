@@ -95,6 +95,7 @@ async function loadProduction() {
 }
 
 async function triggerWorker() {
+  if (!canRunProductionWorker.value) return
   triggeringWorker.value = true
   triggerMsg.value = ''
   triggerError.value = ''
@@ -117,6 +118,7 @@ async function triggerWorker() {
 }
 
 async function cancelWorker() {
+  if (!canControlWorker.value) return
   if (cancelling.value) return
 
   // Si ya hay señal de detención activa → cancelarla (undo)
@@ -151,6 +153,7 @@ async function cancelWorker() {
 // Ambas acciones escriben posible_cosecha: un trigger de la tabla deriva
 // bloqueado a partir de ese campo, así que no se toca bloqueado directamente.
 async function desbloquear() {
+  if (!production.value || !permStore.puede('producciones.bloquear', production.value.CentroCostoID)) return
   unlocking.value = true
   try {
     await prodApi.desbloquear(produccionId)
@@ -162,6 +165,7 @@ async function desbloquear() {
 
 // Marcar el lote como listo para cosecha; el trigger lo bloquea.
 async function marcarPosibleCosecha() {
+  if (!production.value || !permStore.puede('producciones.bloquear', production.value.CentroCostoID)) return
   unlocking.value = true
   try {
     await prodApi.bloquear(produccionId)
@@ -257,6 +261,11 @@ const workerPct = computed(() => {
   return Math.round((ws.scenes_done / ws.scenes_total) * 100)
 })
 
+const canRunProductionWorker = computed(() =>
+  production.value ? permStore.puede('monitoreo.worker', production.value.CentroCostoID) : false
+)
+const canControlWorker = computed(() => permStore.puede('worker.controlar'))
+
 // Reload scenes on each scene completion and when worker finishes
 watch(
   () => workerStatus.value?.scenes_done,
@@ -311,8 +320,9 @@ const totalScenes = computed(() => production.value?.escenas?.length ?? 0)
       </button>
       <button
         @click="router.push({ name: 'poligono', params: { id: produccionId } })"
-        class="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-green-300 hover:text-green-700 transition-colors"
-        title="Ajustar el polígono de monitoreo sobre el mapa"
+        :disabled="!!production && !permStore.puede('producciones.editar', production.CentroCostoID)"
+        class="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-green-300 hover:text-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        :title="production && !permStore.puede('producciones.editar', production.CentroCostoID) ? t('permisos.sinPermiso') : 'Ajustar el polígono de monitoreo sobre el mapa'"
       >
         ✎ Editar polígono
       </button>
@@ -389,14 +399,14 @@ const totalScenes = computed(() => production.value?.escenas?.length ?? 0)
             <button
               v-if="isProcessing"
               @click="cancelWorker"
-              :disabled="cancelling"
+              :disabled="!canControlWorker || cancelling"
               class="text-sm px-4 py-2 rounded-lg border transition-colors flex items-center gap-1.5 disabled:opacity-60"
               :class="workerStore.stopPending
                 ? 'border-orange-200 text-orange-600 hover:bg-orange-50'
                 : 'border-red-200 text-red-600 hover:bg-red-50'"
               :title="workerStore.stopPending
-                ? 'Quitar señal de detención — el worker continuará'
-                : 'El worker terminará la escena actual y se detendrá'"
+                ? (!canControlWorker ? t('permisos.sinPermiso') : 'Quitar señal de detención — el worker continuará')
+                : (!canControlWorker ? t('permisos.sinPermiso') : 'El worker terminará la escena actual y se detendrá')"
             >
               <svg v-if="cancelling" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -410,9 +420,9 @@ const totalScenes = computed(() => production.value?.escenas?.length ?? 0)
             <button
               v-else
               @click="triggerWorker"
-              :disabled="triggeringWorker || workerStore.blockIndividualTrigger"
+              :disabled="!canRunProductionWorker || triggeringWorker || workerStore.blockIndividualTrigger"
               class="text-sm px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
-              :title="workerStore.blockIndividualTrigger && !isProcessing ? 'Otra producción en proceso — espera a que termine' : undefined"
+              :title="!canRunProductionWorker ? t('permisos.sinPermiso') : workerStore.blockIndividualTrigger && !isProcessing ? 'Otra producción en proceso — espera a que termine' : undefined"
             >
               {{ triggeringWorker ? '...' : t('production.process') }}
             </button>

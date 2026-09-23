@@ -40,7 +40,6 @@ services:
       # Auth configuration
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
       AUTH_TOKEN_TTL_HOURS: ${AUTH_TOKEN_TTL_HOURS:-8}
-      AUTH_DELETE_ALLOWED_USER_IDS: ${AUTH_DELETE_ALLOWED_USER_IDS:-}
       # Logging configuration
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
       LOGGING_FORMAT: ${LOGGING_FORMAT:-json}

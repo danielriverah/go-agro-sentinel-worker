@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,15 +33,6 @@ type AuthConfig struct {
 	// TokenTTLHours es la duración del token en horas. Default: 8.
 	// Override: AUTH_TOKEN_TTL_HOURS env var.
 	TokenTTLHours int `yaml:"token_ttl_hours"`
-	// DeleteAllowedUserIDs son los IDs que pueden eliminar el monitoreo de una
-	// producción. Lista separada por comas.
-	// Override: AUTH_DELETE_ALLOWED_USER_IDS env var.
-	//
-	// El borrado es irreversible y toca MySQL, S3 y DynamoDB, así que no basta
-	// con tener sesión. Mientras no exista un rol persistido, esta lista hace
-	// de control de acceso. Vacía significa que NADIE puede borrar: si se
-	// despliega sin configurar, la operación queda cerrada, no abierta.
-	DeleteAllowedUserIDs []int64 `yaml:"delete_allowed_user_ids"`
 }
 
 type AppConfig struct {
@@ -230,9 +220,6 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.Auth.TokenTTLHours = n
 		}
 	}
-	if v := os.Getenv("AUTH_DELETE_ALLOWED_USER_IDS"); v != "" {
-		cfg.Auth.DeleteAllowedUserIDs = parseUserIDList(v)
-	}
 	if v := os.Getenv("WORKER_SCHEDULE"); v != "" {
 		cfg.Worker.Schedule = v
 	}
@@ -272,19 +259,4 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("IA_BEDROCK_REGION"); v != "" {
 		cfg.IA.Bedrock.Region = v
 	}
-}
-
-// parseUserIDList convierte "3,7, 12" en []int64{3,7,12}.
-// Las entradas no numéricas o no positivas se descartan en silencio: es
-// preferible conceder de menos que de más en una lista de autorización.
-func parseUserIDList(raw string) []int64 {
-	var out []int64
-	for _, part := range strings.Split(raw, ",") {
-		n, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
-		if err != nil || n <= 0 {
-			continue
-		}
-		out = append(out, n)
-	}
-	return out
 }

@@ -270,6 +270,56 @@ func TestListProducciones(t *testing.T) {
 	}
 }
 
+func TestListProduccionesFiltraPorPermisoVerRancho(t *testing.T) {
+	cc10 := int64(10)
+	cc20 := int64(20)
+	prodRepo := &mockProductionRepo{
+		listActive: []*domain.Production{
+			{ID: 1, ProduccionID: 101, Cosecha: "soja", CentroCostoID: cc10},
+			{ID: 2, ProduccionID: 102, Cosecha: "maiz", CentroCostoID: cc20},
+		},
+	}
+	h := &Handlers{
+		Productions: prodRepo,
+		Permisos: &mockPermissionChecker{
+			disponible: true,
+			perms: map[int64]*auth.PermisosUsuario{
+				7: {
+					UsuarioID: 7,
+					Permisos: []auth.AsignacionPermiso{
+						{Clave: "producciones.ver", CentroCostoID: &cc10},
+						{Clave: "producciones.editar", CentroCostoID: &cc20},
+					},
+				},
+			},
+		},
+	}
+
+	req := httptest.NewRequest("GET", "/api/v1/producciones", nil)
+	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: 7, Username: "u"}))
+	w := httptest.NewRecorder()
+
+	h.ListProducciones(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var body struct {
+		Data []domain.Production `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data) != 1 {
+		t.Fatalf("got %d producciones, want 1", len(body.Data))
+	}
+	if body.Data[0].CentroCostoID != cc10 {
+		t.Fatalf("centro_costo_id = %d, want %d", body.Data[0].CentroCostoID, cc10)
+	}
+}
+
 func TestGetProduccion(t *testing.T) {
 	prodRepo := &mockProductionRepo{
 		byID: map[int64]*domain.Production{
@@ -466,11 +516,11 @@ func TestTriggerSyncNotConfigured(t *testing.T) {
 
 func TestHealthDependenciesAllOk(t *testing.T) {
 	h := &Handlers{
-		DB:        &mockDBPinger{err: nil},
-		GDAL:      &mockGDALExecutor{version: "GDAL 3.9.3", err: nil},
-		S3Health:  &mockS3Checker{err: nil},
-		DynamoDB:  &mockDynamoDBChecker{err: nil},
-		S3Bucket:  "test-bucket",
+		DB:       &mockDBPinger{err: nil},
+		GDAL:     &mockGDALExecutor{version: "GDAL 3.9.3", err: nil},
+		S3Health: &mockS3Checker{err: nil},
+		DynamoDB: &mockDynamoDBChecker{err: nil},
+		S3Bucket: "test-bucket",
 	}
 
 	req := httptest.NewRequest("GET", "/health/dependencies", nil)
@@ -510,11 +560,11 @@ func TestHealthDependenciesAllOk(t *testing.T) {
 
 func TestHealthDependenciesWithErrors(t *testing.T) {
 	h := &Handlers{
-		DB:        &mockDBPinger{err: nil},
-		GDAL:      &mockGDALExecutor{version: "", err: context.DeadlineExceeded},
-		S3Health:  &mockS3Checker{err: nil},
-		DynamoDB:  &mockDynamoDBChecker{err: context.DeadlineExceeded},
-		S3Bucket:  "test-bucket",
+		DB:       &mockDBPinger{err: nil},
+		GDAL:     &mockGDALExecutor{version: "", err: context.DeadlineExceeded},
+		S3Health: &mockS3Checker{err: nil},
+		DynamoDB: &mockDynamoDBChecker{err: context.DeadlineExceeded},
+		S3Bucket: "test-bucket",
 	}
 
 	req := httptest.NewRequest("GET", "/health/dependencies", nil)

@@ -365,7 +365,7 @@ func (w *Worker) RegenAllCompleted(ctx context.Context, produccionID int64) erro
 
 // regenerateParamsAndIA rebuilds multiband.params.json and multiband.ia_req.json
 // for an already-completed scene using the existing multiband.tif in S3.
-// It does NOT re-download COG bands or regenerate images.
+// Re-evaluates coverage and refreshes previews without re-downloading COG bands.
 func (w *Worker) regenerateParamsAndIA(ctx context.Context, production *domain.Production, scene *domain.Scene) error {
 	baseDir := w.deps.Processing.TempDir
 	if baseDir == "" {
@@ -395,76 +395,54 @@ func (w *Worker) regenerateParamsAndIA(ctx context.Context, production *domain.P
 		return err
 	}
 
-	maskedPath, err := processing.MaskMultiband(ctx, w.deps.Executor, multibandPath, polygonPath, jobDir.Work())
+	validPath, quality, coverage, err := processing.PrepareQuality(ctx, w.deps.Executor, multibandPath, polygonPath, jobDir.Work())
 	if err != nil {
 		return err
 	}
-
-	bandStats, err := processing.CalculateBandStatistics(ctx, w.deps.Executor, maskedPath)
-	if err != nil {
-		return err
+	cloud := coverage.CloudPct
+	cloudKnown := quality.HasSCL
+	if !cloudKnown && scene.ProductionCloud != nil && *scene.ProductionCloud <= 100 {
+		cloud, cloudKnown = *scene.ProductionCloud, true
+		coverage = w.fetchExistingCoverage(ctx, production, scene)
 	}
-
-	indices := processing.AllIndices()
-	for _, idx := range indices {
-		rawOut := filepath.Join(jobDir.Work(), string(idx.Type)+"_masked.png")
-		if err := processing.GenerateIndex(ctx, w.deps.Executor, maskedPath, rawOut, idx.Type); err != nil {
+	threshold := w.deps.Sentinel.CloudCoverProductionMax
+	if threshold <= 0 {
+		threshold = cloudCoverThreshold
+	}
+	quality.Evaluate(cloud, threshold, cloudKnown)
+	var outputs []outputFile
+	if quality.Usable {
+		generated, err := w.generateFullOutputs(ctx, production, scene, validPath, jobDir, cloud, coverage, polygonPath, scene.EffectiveBBox(production), quality)
+		if err != nil {
 			return err
 		}
+		outputs = generated.files
+		iaFiles, err := w.generateIARequest(ctx, production, scene, generated.params, jobDir)
+		if err != nil {
+			return err
+		}
+		outputs = append(outputs, iaFiles...)
+	} else {
+		natural, err := w.generateNaturalOnly(ctx, validPath, jobDir, scene.EffectiveBBox(production))
+		if err != nil {
+			return err
+		}
+		paramsPath := filepath.Join(jobDir.Output(), "multiband.params.json")
+		if err := writeJSON(paramsPath, qualityParams(production, scene, quality, coverage, cloud)); err != nil {
+			return err
+		}
+		outputs = []outputFile{
+			{fileType: domain.FileNatural, path: natural, name: "natural.png"},
+			{fileType: domain.FileParams, path: paramsPath, name: "multiband.params.json"},
+		}
 	}
-
-	indexStats, err := processing.CalculateIndexStatistics(ctx, w.deps.Executor, maskedPath, indices)
-	if err != nil {
+	if err := w.uploadAndRegister(ctx, production, scene, outputs); err != nil {
 		return err
 	}
-
-	// Reuse the stored cloud cover — no need to re-download the SCL band.
-	cloudCoverPoly := 0.0
-	if scene.ProductionCloud != nil {
-		cloudCoverPoly = *scene.ProductionCloud
-	}
-
-	// Recover the original coverage from the existing params.json so regen
-	// does not overwrite it with zeros (SCL is not re-downloaded on regen).
-	existingCoverage := w.fetchExistingCoverage(ctx, production, scene)
-
-	previousParams := w.fetchPreviousParams(ctx, production.ProduccionID, scene)
-
-	var sceneDate, fechaPlantacion time.Time
-	if scene.Fecha != nil {
-		sceneDate = *scene.Fecha
-	}
-	if production.FechaPlantacion != nil {
-		fechaPlantacion = *production.FechaPlantacion
-	}
-
-	params := processing.BuildParams(processing.ParamsInput{
-		ProduccionID:    production.ProduccionID,
-		SceneID:         scene.SceneName,
-		SceneDate:       sceneDate,
-		FechaPlantacion: fechaPlantacion,
-		CloudCoverBBox:  cloudCoverPoly,
-		Indices:         indexStats,
-		BandStats:       bandStats,
-		Coverage:        existingCoverage,
-	}, previousParams)
-
-	outDir := jobDir.Output()
-	paramsPath := filepath.Join(outDir, "multiband.params.json")
-	if err := writeJSON(paramsPath, params); err != nil {
-		return &domain.ProcessingError{Type: domain.ErrDisk, Message: "writing regen params", Wrapped: err}
-	}
-
-	var outputs []outputFile
-	outputs = append(outputs, outputFile{fileType: domain.FileParams, path: paramsPath, name: "multiband.params.json"})
-
-	if iaReqFiles, iaErr := w.generateIARequest(ctx, production, scene, params, jobDir); iaErr != nil {
-		w.log.Warn("failed to generate ia_req.json during regen", "scene_name", scene.SceneName, "error", iaErr)
-	} else {
-		outputs = append(outputs, iaReqFiles...)
-	}
-
-	return w.uploadAndRegister(ctx, production, scene, outputs)
+	updated := *scene
+	updated.Usable, updated.ParamsExists = quality.Usable, true
+	updated.ProductionCloud = &cloud
+	return w.deps.Scenes.Upsert(ctx, &updated)
 }
 
 // ProcessAllPending is the Mode 4 scheduler. It iterates all pending scenes
@@ -638,13 +616,6 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 		return err
 	}
 
-	// ResolveBands resolves remote COG URLs — needed for SCL (cloud cover) and
-	// for building the multiband if no reusable source is found.
-	bands, sclHref, err := w.deps.Bands.ResolveBands(ctx, production.ProduccionID, scene.SceneName)
-	if err != nil {
-		return err
-	}
-
 	// --- Multiband reuse: check if another production already downloaded a
 	//     multiband.tif whose tile_bbox contains our polygon_bbox. ---
 	var multibandRefID *uint64
@@ -657,6 +628,10 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 	}
 
 	if multibandPath == "" {
+		bands, sclHref, err := w.deps.Bands.ResolveBands(ctx, production.ProduccionID, scene.SceneName)
+		if err != nil {
+			return err
+		}
 		// No reusable multiband found — build from COG bands.
 		// Append SCL as band 11 so the multiband carries scene classification
 		// alongside the 10 spectral bands (B02..B12).
@@ -671,45 +646,16 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 		}
 	}
 
-	cloudCoverPoly, coverage, err := processing.CalculateCloudCover(ctx, w.deps.Executor, sclHref, *tileBBox, jobDir.Work(), polygonPath)
+	validPath, quality, coverage, err := processing.PrepareQuality(ctx, w.deps.Executor, multibandPath, polygonPath, jobDir.Work())
 	if err != nil {
-		var procErr *domain.ProcessingError
-		if errors.As(err, &procErr) && procErr.Type == domain.ErrNoData {
-			// SCL has no valid pixels — sensor did not acquire data for this area.
-			// Still generate natural.png (multiband is already built) and upload
-			// both so the scene is visually browsable. Mark production_cloud=101
-			// (distinct from 100% cloud) and COMPLETED so it is never retried.
-			const noDataCloud = 101.0
-			w.log.Warn("scene has no valid SCL pixels — generating natural.png and marking nodata (101)",
-				"scene_name", scene.SceneName, "produccion_id", production.ProduccionID)
-
-			noDataOutputs := []outputFile{
-				{fileType: domain.FileMultiband, path: multibandPath, name: "multiband.tif"},
-			}
-			if naturalPath, natErr := w.generateNaturalOnly(ctx, multibandPath, jobDir, imageExtent); natErr != nil {
-				w.log.Warn("failed to generate natural.png for nodata scene", "scene_name", scene.SceneName, "error", natErr)
-			} else {
-				noDataOutputs = append(noDataOutputs, outputFile{fileType: domain.FileNatural, path: naturalPath, name: "natural.png"})
-			}
-			if uploadErr := w.uploadAndRegister(ctx, production, scene, noDataOutputs); uploadErr != nil {
-				return uploadErr
-			}
-
-			noData := noDataCloud
-			finalScene := *scene
-			finalScene.Status = domain.StatusCompleted
-			finalScene.Usable = false
-			finalScene.ProductionCloud = &noData
-			finalScene.TruthTifExists = true
-			finalScene.RenderTifExists = true
-			now := time.Now().UTC()
-			finalScene.UltimaSincronizacion = &now
-			if upsertErr := w.deps.Scenes.Upsert(ctx, &finalScene); upsertErr != nil {
-				return &domain.ProcessingError{Type: domain.ErrMySQL, Message: "marking nodata scene completed", Wrapped: upsertErr}
-			}
-			return nil
-		}
 		return err
+	}
+	cloudCoverPoly := coverage.CloudPct
+	cloudKnown := quality.HasSCL
+	// Legacy multibands have no SCL. Never borrow another field's cloud
+	// percentage; an existing measurement is only valid for this destination.
+	if !cloudKnown && scene.ProductionCloud != nil && *scene.ProductionCloud <= 100 {
+		cloudCoverPoly, cloudKnown = *scene.ProductionCloud, true
 	}
 
 	outputs := []outputFile{
@@ -720,12 +666,13 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 	if threshold <= 0 {
 		threshold = cloudCoverThreshold
 	}
-	passesQuality := cloudCoverPoly <= threshold
+	quality.Evaluate(cloudCoverPoly, threshold, cloudKnown)
+	passesQuality := quality.Usable
 
 	var params *processing.Params
 
 	if passesQuality {
-		imgOutputs, err := w.generateFullOutputs(ctx, production, scene, multibandPath, jobDir, cloudCoverPoly, coverage, polygonPath, imageExtent)
+		imgOutputs, err := w.generateFullOutputs(ctx, production, scene, validPath, jobDir, cloudCoverPoly, coverage, polygonPath, imageExtent, quality)
 		if err != nil {
 			return err
 		}
@@ -740,11 +687,17 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 			outputs = append(outputs, iaReqFiles...)
 		}
 	} else {
-		naturalPath, err := w.generateNaturalOnly(ctx, multibandPath, jobDir, imageExtent)
+		naturalPath, err := w.generateNaturalOnly(ctx, validPath, jobDir, imageExtent)
 		if err != nil {
 			return err
 		}
 		outputs = append(outputs, outputFile{fileType: domain.FileNatural, path: naturalPath, name: "natural.png"})
+		params = qualityParams(production, scene, quality, coverage, cloudCoverPoly)
+		paramsPath := filepath.Join(jobDir.Output(), "multiband.params.json")
+		if err := writeJSON(paramsPath, params); err != nil {
+			return err
+		}
+		outputs = append(outputs, outputFile{fileType: domain.FileParams, path: paramsPath, name: "multiband.params.json"})
 	}
 
 	if err := w.uploadAndRegister(ctx, production, scene, outputs); err != nil {
@@ -759,12 +712,7 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 	finalScene.ParamsExists = params != nil
 	finalScene.RenderTifExists = true
 	finalScene.MultibandRefEscenaID = multibandRefID
-	// Cuando el multiband viene de otra producción, las imágenes heredan SU
-	// extensión. Se guarda en la escena para que la georreferencia no dependa
-	// de que esa producción siga existiendo.
-	if multibandRefID != nil && imageExtent != nil {
-		finalScene.ImageBBox = imageExtent.MarshalJSONColumn()
-	}
+	// image_bbox is populated and preserved by the database trigger.
 	now := time.Now().UTC()
 	finalScene.UltimaSincronizacion = &now
 
@@ -819,7 +767,23 @@ type fullOutputs struct {
 	params *processing.Params
 }
 
-func (w *Worker) generateFullOutputs(ctx context.Context, production *domain.Production, scene *domain.Scene, multibandPath string, jobDir *storage.JobDir, cloudCoverPoly float64, coverage processing.CoverageStats, polygonPath string, imageExtent *domain.BBox) (*fullOutputs, error) {
+// Rejected scenes retain a quality report, but no representative index means.
+func qualityParams(production *domain.Production, scene *domain.Scene, quality *processing.Quality, coverage processing.CoverageStats, cloud float64) *processing.Params {
+	var date, planted time.Time
+	if scene.Fecha != nil {
+		date = *scene.Fecha
+	}
+	if production.FechaPlantacion != nil {
+		planted = *production.FechaPlantacion
+	}
+	return processing.BuildParams(processing.ParamsInput{
+		ProduccionID: production.ProduccionID, SceneID: scene.SceneName,
+		SceneDate: date, FechaPlantacion: planted, Quality: quality,
+		Coverage: coverage, CloudCoverBBox: cloud,
+	}, nil)
+}
+
+func (w *Worker) generateFullOutputs(ctx context.Context, production *domain.Production, scene *domain.Scene, multibandPath string, jobDir *storage.JobDir, cloudCoverPoly float64, coverage processing.CoverageStats, polygonPath string, imageExtent *domain.BBox, quality *processing.Quality) (*fullOutputs, error) {
 	outDir := jobDir.Output()
 	var files []outputFile
 
@@ -851,6 +815,9 @@ func (w *Worker) generateFullOutputs(ctx context.Context, production *domain.Pro
 		if err := processing.GenerateRGB(ctx, w.deps.Executor, vizPath, outPath, red, green, blue); err != nil {
 			return nil, err
 		}
+		if err := processing.ApplyNoDataAlpha(ctx, w.deps.Executor, vizPath, outPath); err != nil {
+			return nil, err
+		}
 		if err := processing.OverlayPolygon(ctx, w.deps.Executor, outPath, polygonPath, outPath); err != nil {
 			w.log.Warn("polygon overlay failed", "file", comp.Type, "error", err)
 		}
@@ -861,6 +828,9 @@ func (w *Worker) generateFullOutputs(ctx context.Context, production *domain.Pro
 	for _, idx := range indices {
 		outPath := filepath.Join(outDir, string(idx.Type)+".png")
 		if err := processing.GenerateIndex(ctx, w.deps.Executor, vizPath, outPath, idx.Type); err != nil {
+			return nil, err
+		}
+		if err := processing.ApplyNoDataAlpha(ctx, w.deps.Executor, vizPath, outPath); err != nil {
 			return nil, err
 		}
 		if err := processing.OverlayPolygon(ctx, w.deps.Executor, outPath, polygonPath, outPath); err != nil {
@@ -921,6 +891,7 @@ func (w *Worker) generateFullOutputs(ctx context.Context, production *domain.Pro
 		Indices:         indexStats,
 		BandStats:       bandStats,
 		Coverage:        coverage,
+		Quality:         quality,
 	}, previousParams)
 
 	paramsPath := filepath.Join(outDir, "multiband.params.json")
@@ -947,6 +918,9 @@ func (w *Worker) generateNaturalOnly(ctx context.Context, multibandPath string, 
 	outPath := filepath.Join(jobDir.Output(), string(domain.FileNatural)+".png")
 	if err := processing.GenerateRGB(ctx, w.deps.Executor, vizPath, outPath,
 		bandNumber(domain.BandB04), bandNumber(domain.BandB03), bandNumber(domain.BandB02)); err != nil {
+		return "", err
+	}
+	if err := processing.ApplyNoDataAlpha(ctx, w.deps.Executor, vizPath, outPath); err != nil {
 		return "", err
 	}
 	return outPath, nil
@@ -999,6 +973,23 @@ func (w *Worker) fetchPreviousParams(ctx context.Context, produccionID int64, sc
 		return nil
 	}
 
+	rows, err := w.deps.Scenes.ListByMonitoringProduccion(ctx, scene.MonitoringProduccionID)
+	if err != nil {
+		w.log.Warn("cannot validate historical scene quality", "error", err)
+		return nil
+	}
+	usable := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		usable[row.SceneName] = row.Usable
+	}
+	filtered := previous.Historico[:0]
+	for _, entry := range previous.Historico {
+		if usable[entry.SceneID] && (entry.Quality == nil || entry.Quality.Usable) {
+			entry.Delta = nil // old deltas may refer to a subsequently rejected scene
+			filtered = append(filtered, entry)
+		}
+	}
+	previous.Historico = filtered
 	return &previous
 }
 

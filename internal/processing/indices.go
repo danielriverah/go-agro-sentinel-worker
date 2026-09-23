@@ -57,7 +57,7 @@ func AllIndices() []IndexDefinition {
 			Name:    "NDRE",
 		},
 		{
-			Type:    domain.FileEVI,
+			Type: domain.FileEVI,
 			// L=10000 because Sentinel-2 L2A DN values are scaled by 10000
 			// (reflectance 0.0–1.0 → DN 0–10000). Standard EVI uses L=1 for
 			// reflectance inputs; using L=1 with DN inflates EVI ~5× (e.g. 0.77
@@ -85,7 +85,7 @@ func AllIndices() []IndexDefinition {
 			Name:    "NDMI",
 		},
 		{
-			Type:    domain.FileSAVI,
+			Type: domain.FileSAVI,
 			// L=5000 = 0.5 reflectance in Sentinel-2 DN scale (×10000).
 			Formula: "numpy.clip(1.5*(A-B)/(A+B+5000),-1,1)",
 			Bands:   []domain.Band{domain.BandB08, domain.BandB04},
@@ -100,7 +100,8 @@ var calcLetters = []string{"A", "B", "C", "D"}
 
 // vegetationColorRamp is a gdaldem color-relief ramp (green-yellow-red)
 // for vegetation indices, keyed on values in the [-1, 1] index range.
-const vegetationColorRamp = `-1.0 165 0 38
+const vegetationColorRamp = `nv 0 0 0 0
+-1.0 165 0 38
 -0.2 215 48 39
 0.0 254 224 139
 0.3 166 217 106
@@ -110,7 +111,8 @@ const vegetationColorRamp = `-1.0 165 0 38
 
 // moistureColorRamp is a gdaldem color-relief ramp (blue-white-brown) for
 // moisture-related indices, keyed on values in the [-1, 1] index range.
-const moistureColorRamp = `-1.0 140 81 10
+const moistureColorRamp = `nv 0 0 0 0
+-1.0 140 81 10
 -0.2 223 194 125
 0.0 245 245 245
 0.2 128 205 193

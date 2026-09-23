@@ -1,0 +1,28 @@
+version: '2.1'
+
+services:
+  aws-mock:
+    container_name: agro-sentinel-aws-mock
+    image: localstack/localstack:3.8
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,sqs,dynamodb
+    volumes:
+      - agro-sentinel-aws-mock-data:/var/lib/localstack
+      - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - agro-sentinel-external
+
+networks:
+  agro-sentinel-external:
+    name: agro-sentinel-external
+
+volumes:
+  agro-sentinel-aws-mock-data:

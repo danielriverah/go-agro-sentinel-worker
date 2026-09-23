@@ -43,28 +43,25 @@ func (e *escenaCentroCostoResolver) GetCentroCostoByMonitoringID(ctx context.Con
 		return nil, nil
 	}
 	// GetCentroCostoByMonitoringID (not GetByMonitoringID) on purpose:
-	// domain.Production.CentroCostoID is only populated in memory during sync
-	// (see internal/sync/sync.go) — GetByID/GetByMonitoringID select only
-	// s3_monitoring_producciones columns, so p.CentroCostoID would be zero
-	// here. GetCentroCostoByMonitoringID runs the real join against producciones.
+	// this resolver only needs the centro_costo_id and should not load the
+	// full production detail.
 	return e.Productions.GetCentroCostoByMonitoringID(ctx, scene.MonitoringProduccionID)
 }
 
 // deleteMonitoreoMiddleware protege el borrado irreversible de monitoreo.
 //
-// Si el sistema de permisos está disponible, usa RequirePermission
-// (monitoreo.eliminar) igual que el resto de operaciones ranch-scoped. Si las
-// tablas de permisos todavía no existen, RequirePermission pasaría todo en
-// modo permisivo — inaceptable para una operación irreversible — así que en
-// ese caso se cae en la lista explícita AUTH_DELETE_ALLOWED_USER_IDS (vacía =
-// cerrado para todos). Disponible() se fija una sola vez al arrancar
-// (tableExists en el probe de startup), así que decidir aquí, al construir el
-// router, es equivalente a decidirlo por request.
+// Verifica el permiso 'monitoreo.eliminar' a través de la tabla de permisos.
+// Si la tabla de permisos no existe (Disponible() == false), la operación se
+// deniega por defecto, nunca permisiva: es irreversible y toca tres sistemas,
+// así que es más seguro requerir una configuración explícita de permisos.
+//
+// La verificación se hace dentro del handler (EliminarMonitoreo) a través del
+// método verificarPermisoEliminar, que también implementa el fallback seguro.
 func deleteMonitoreoMiddleware(h *Handlers) func(http.Handler) http.Handler {
-	if h.Permisos.Disponible() {
-		return auth.RequirePermission("monitoreo.eliminar", h.Permisos, h.Productions)
+	return func(next http.Handler) http.Handler {
+		// Sin cambios: solo continúa. La verificación sucede en el handler.
+		return next
 	}
-	return auth.RequireUserIn(h.DeleteAllowedUserIDs)
 }
 
 // NewRouter builds the API's http.ServeMux, wiring health, docs and all
@@ -114,7 +111,8 @@ func NewRouter(logger *slog.Logger, h *Handlers, authH *AuthHandlers, secretKey 
 		auth.RequirePermission("producciones.bloquear", h.Permisos, h.Productions)(http.HandlerFunc(h.DesbloquearProduccion)))
 	mux.Handle("POST /api/v1/producciones/{id}/bloquear",
 		auth.RequirePermission("producciones.bloquear", h.Permisos, h.Productions)(http.HandlerFunc(h.BloquearProduccion)))
-	mux.HandleFunc("PATCH /api/v1/producciones/{id}/ia-auto", h.PatchIAAuto)
+	mux.Handle("PATCH /api/v1/producciones/{id}/ia-auto",
+		auth.RequirePermission("producciones.editar", h.Permisos, h.Productions)(http.HandlerFunc(h.PatchIAAuto)))
 	mux.Handle("PUT /api/v1/producciones/{id}/poligono",
 		auth.RequirePermission("producciones.editar", h.Permisos, h.Productions)(http.HandlerFunc(h.PutProduccionPoligono)))
 

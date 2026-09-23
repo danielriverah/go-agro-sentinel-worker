@@ -84,7 +84,7 @@ ON DUPLICATE KEY UPDATE
 
 // GetByProduccionID fetches a production by its external produccion_id.
 func (r *ProductionRepo) GetByProduccionID(ctx context.Context, produccionID int64) (*domain.Production, error) {
-	const q = prodSelectCols + ` FROM s3_monitoring_producciones WHERE produccion_id = ?`
+	const q = prodSelectCols + ` FROM s3_monitoring_producciones mp WHERE mp.produccion_id = ?`
 
 	row := r.db.QueryRowContext(ctx, q, produccionID)
 	p, err := scanProduction(row)
@@ -100,7 +100,7 @@ func (r *ProductionRepo) GetByProduccionID(ctx context.Context, produccionID int
 
 // GetByID fetches a production by its s3_monitoring_produccion_id (PK).
 func (r *ProductionRepo) GetByID(ctx context.Context, id uint) (*domain.Production, error) {
-	const q = prodSelectCols + ` FROM s3_monitoring_producciones WHERE s3_monitoring_produccion_id = ?`
+	const q = prodSelectCols + ` FROM s3_monitoring_producciones mp WHERE mp.s3_monitoring_produccion_id = ?`
 
 	row := r.db.QueryRowContext(ctx, q, id)
 	p, err := scanProduction(row)
@@ -121,7 +121,7 @@ func (r *ProductionRepo) GetByMonitoringID(ctx context.Context, monitoringID uin
 
 // ListActive returns all productions with monitoring=1.
 func (r *ProductionRepo) ListActive(ctx context.Context) ([]*domain.Production, error) {
-	const q = prodSelectCols + ` FROM s3_monitoring_producciones WHERE monitoring = 1`
+	const q = prodSelectCols + ` FROM s3_monitoring_producciones mp WHERE mp.monitoring = 1`
 
 	rows, err := r.db.QueryContext(ctx, q)
 	if err != nil {
@@ -187,8 +187,12 @@ GROUP BY s3_monitoring_produccion_id`
 		); err != nil {
 			return nil, fmt.Errorf("scanning production stats: %w", err)
 		}
-		if lastTif.Valid { s.LastTifFecha = &lastTif.Time }
-		if lastIa.Valid  { s.LastIaFecha  = &lastIa.Time }
+		if lastTif.Valid {
+			s.LastTifFecha = &lastTif.Time
+		}
+		if lastIa.Valid {
+			s.LastIaFecha = &lastIa.Time
+		}
 		result[s.MonitoringProduccionID] = &s
 	}
 	return result, rows.Err()
@@ -419,7 +423,8 @@ SELECT s3_monitoring_produccion_id, produccion_id, cosecha, vaiedades, folio, ra
 	monitoring, max_dias_monitoring, fecha_fin, fecha_plantacion,
 	pbox, polygon_bbox, tile_bbox, tile_center_lat, tile_center_lon, tile_edge_meters,
 	fase2_completa_at, poligono, tif_complete_at, ia_complete_at, ia_auto,
-	posible_cosecha, bloqueado, ultima_sincronizacion, fecha_creacion, fecha_actualizacion`
+	posible_cosecha, bloqueado, ultima_sincronizacion, fecha_creacion, fecha_actualizacion,
+	(SELECT p.centro_costo_id FROM producciones p WHERE p.produccion_id = mp.produccion_id) AS centro_costo_id`
 
 // rowScanner abstracts *sql.Row / *sql.Rows for shared scan logic.
 type rowScanner interface {
@@ -436,13 +441,14 @@ func scanProduction(row rowScanner) (*domain.Production, error) {
 	var pbox, polygonBbox, tileBbox, poligono []byte
 	var fechaAct sql.NullTime
 	var folio, rancho sql.NullString
+	var centroCostoID sql.NullInt64
 
 	err := row.Scan(
 		&p.ID, &p.ProduccionID, &p.Cosecha, &p.Vaiedades, &folio, &rancho, &p.Prefix,
 		&monitoring, &maxDias, &fechaFin, &fechaPlantacion,
 		&pbox, &polygonBbox, &tileBbox, &lat, &lon, &tileEdge,
 		&fase2, &poligono, &tifAt, &iaAt, &iaAuto,
-		&posibleCosecha, &bloqueado, &ultimaSync, &p.FechaCreacion, &fechaAct,
+		&posibleCosecha, &bloqueado, &ultimaSync, &p.FechaCreacion, &fechaAct, &centroCostoID,
 	)
 	if err != nil {
 		return nil, err
@@ -487,6 +493,9 @@ func scanProduction(row rowScanner) (*domain.Production, error) {
 	}
 	if fechaAct.Valid {
 		p.FechaActualizacion = &fechaAct.Time
+	}
+	if centroCostoID.Valid {
+		p.CentroCostoID = centroCostoID.Int64
 	}
 
 	p.PBoxJSON = jsonOrNil(pbox)

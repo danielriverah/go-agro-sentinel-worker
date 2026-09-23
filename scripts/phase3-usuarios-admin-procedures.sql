@@ -12,7 +12,7 @@
 -- actual, que quien administra no conoce.
 --
 -- IMPORTANTE PARA EL DBA
--- La tabla de usuarios y los procedimientos existentes (fn_validate_login,
+-- La tabla de agro_usuarios y los procedimientos existentes (fn_validate_login,
 -- fn_get_usuario, sp_create_usuario, sp_change_password) viven sólo en la base
 -- y no están versionados en este repositorio, así que los nombres de tabla y
 -- columnas de abajo son una PLANTILLA: ajústalos a los reales. Lo que no debe
@@ -28,8 +28,8 @@
 USE agro;
 
 -- Ajusta estos nombres a los reales antes de ejecutar.
-SET @tabla_usuarios = 'usuarios';   -- tabla real de usuarios
-SET @col_id         = 'usuario_id'; -- PK
+SET @tabla_usuarios = 'agro_usuarios';   -- tabla real de usuarios
+SET @col_id         = 'id'; -- PK
 SET @col_username   = 'username';
 SET @col_activo     = 'activo';
 
@@ -51,7 +51,7 @@ BEGIN
   SELECT COALESCE(
            JSON_ARRAYAGG(
              JSON_OBJECT(
-               'user_id',        u.usuario_id,
+               'user_id',        u.id,
                'username',       u.username,
                'activo',         u.activo,
                'fecha_creacion', DATE_FORMAT(u.fecha_creacion, '%Y-%m-%dT%H:%i:%sZ')
@@ -60,7 +60,7 @@ BEGIN
            JSON_ARRAY()
          )
     INTO resultado
-    FROM usuarios u;
+    FROM agro_usuarios u;
 
   RETURN JSON_OBJECT('ok', TRUE, 'code', 'OK', 'usuarios', resultado);
 END$$
@@ -81,32 +81,32 @@ BEGIN
   DECLARE v_activos_resto INT DEFAULT 0;
 
   SELECT COUNT(*) INTO v_existe
-    FROM usuarios WHERE usuario_id = p_user_id;
+    FROM agro_usuarios WHERE id = p_user_id;
 
   IF v_existe = 0 THEN
     SELECT JSON_OBJECT('ok', FALSE, 'code', 'USER_NOT_FOUND') AS resultado;
   ELSE
     SELECT COUNT(*) INTO v_activos_resto
-      FROM usuarios
-     WHERE activo = 1 AND usuario_id <> p_user_id;
+      FROM agro_usuarios
+     WHERE activo = 1 AND id <> p_user_id;
 
     IF p_activo = 0 AND v_activos_resto = 0 THEN
       -- Desactivar al último usuario activo dejaría el sistema sin acceso.
       SELECT JSON_OBJECT('ok', FALSE, 'code', 'LAST_ACTIVE_USER') AS resultado;
     ELSE
-      UPDATE usuarios
+      UPDATE agro_usuarios
          SET activo = IF(p_activo = 0, 0, 1)
-       WHERE usuario_id = p_user_id;
+       WHERE id = p_user_id;
 
       SELECT JSON_OBJECT(
                'ok',       TRUE,
                'code',     'OK',
-               'user_id',  u.usuario_id,
+               'user_id',  u.id,
                'username', u.username,
                'activo',   u.activo
              ) AS resultado
-        FROM usuarios u
-       WHERE u.usuario_id = p_user_id;
+        FROM agro_usuarios u
+       WHERE u.id = p_user_id;
     END IF;
   END IF;
 END$$
@@ -129,7 +129,7 @@ BEGIN
   DECLARE v_salt   VARCHAR(64);
 
   SELECT COUNT(*) INTO v_existe
-    FROM usuarios WHERE usuario_id = p_user_id;
+    FROM agro_usuarios WHERE id = p_user_id;
 
   IF v_existe = 0 THEN
     SELECT JSON_OBJECT('ok', FALSE, 'code', 'USER_NOT_FOUND') AS resultado;
@@ -138,20 +138,20 @@ BEGIN
   ELSE
     SET v_salt = HEX(RANDOM_BYTES(16));
 
-    UPDATE usuarios
+    UPDATE agro_usuarios
        SET salt          = v_salt,
            password_hash = SHA2(CONCAT(v_salt, p_password), 256)
-     WHERE usuario_id = p_user_id;
+     WHERE id = p_user_id;
 
     SELECT JSON_OBJECT(
              'ok',       TRUE,
              'code',     'OK',
-             'user_id',  u.usuario_id,
+             'user_id',  u.id,
              'username', u.username,
              'activo',   u.activo
            ) AS resultado
-      FROM usuarios u
-     WHERE u.usuario_id = p_user_id;
+      FROM agro_usuarios u
+     WHERE u.id = p_user_id;
   END IF;
 END$$
 

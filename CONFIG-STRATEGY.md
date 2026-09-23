@@ -103,11 +103,10 @@ El proyecto utiliza un **modelo de configuración de dos capas**:
 | `WORKER_TIMEZONE` | `worker.timezone` | `America/Mexico_City` | IANA timezone |
 
 ### Autenticación
-| Variable | Valor YAML Afectado | Default | Requerida |
-|----------|------------------|---------|-----------|
-| `AUTH_JWT_SECRET` | `auth.jwt_secret` | — | **Sí (en producción)** |
-| `AUTH_TOKEN_TTL_HOURS` | `auth.token_ttl_hours` | `8` | No |
-| `AUTH_DELETE_ALLOWED_USER_IDS` | `auth.delete_allowed_user_ids` | vacío (nadie puede borrar) | No |
+| Variable | Valor YAML Afectado | Default | Requerida | Nota |
+|----------|------------------|---------|-----------|------|
+| `AUTH_JWT_SECRET` | `auth.jwt_secret` | — | **Sí (en producción)** | Clave HS256 |
+| `AUTH_TOKEN_TTL_HOURS` | `auth.token_ttl_hours` | `8` | No | Duración del token |
 
 ### Logging
 | Variable | Valor YAML Afectado | Default | Nota |
@@ -207,7 +206,11 @@ services:
 
 2. **Credenciales:** Nunca en `docker-compose.yml`, solo en `.env` (que está en `.gitignore`)
 
-3. **DELETE_ALLOWED_USER_IDS:** Lista vacía = NADIE puede borrar (fallback seguro)
+3. **Permiso de Eliminar Monitoreo:** Se gestiona a través de la tabla `auth_permisos`
+   - Permiso: `monitoreo.eliminar` (scope: rancho)
+   - Asigna el permiso a un rol, luego asigna el rol a los usuarios
+   - Si la tabla de permisos no existe, la operación se deniega por defecto (seguro)
+   - No hay fallback a env vars
 
 ---
 

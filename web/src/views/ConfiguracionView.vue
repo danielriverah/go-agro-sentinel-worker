@@ -44,6 +44,7 @@ function esYoMismo(u: UsuarioAdmin): boolean {
 }
 
 async function alternarActivo(u: UsuarioAdmin) {
+  if (!permStore.puede('usuarios.administrar')) return
   error.value = ''
   okMsg.value = ''
   const nuevoValor = u.activo !== 1
@@ -57,6 +58,7 @@ async function alternarActivo(u: UsuarioAdmin) {
 }
 
 function abrirReset(u: UsuarioAdmin) {
+  if (!permStore.puede('usuarios.administrar')) return
   resetUser.value = u
   nuevaPassword.value = ''
   error.value = ''
@@ -64,6 +66,7 @@ function abrirReset(u: UsuarioAdmin) {
 }
 
 async function confirmarReset() {
+  if (!permStore.puede('usuarios.administrar')) return
   if (!resetUser.value || nuevaPassword.value.length < 8) return
   resetting.value = true
   error.value = ''
@@ -79,7 +82,10 @@ async function confirmarReset() {
   }
 }
 
-onMounted(cargar)
+onMounted(async () => {
+  await permStore.refrescar()
+  await cargar()
+})
 </script>
 
 <template>
@@ -145,14 +151,16 @@ onMounted(cargar)
                      el botón se deshabilita en la propia fila. -->
                 <button
                   class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
-                  :disabled="esYoMismo(u) && u.activo === 1"
-                  :title="esYoMismo(u) && u.activo === 1 ? t('config.noTeDesactives') : ''"
+                  :disabled="!permStore.puede('usuarios.administrar') || (esYoMismo(u) && u.activo === 1)"
+                  :title="!permStore.puede('usuarios.administrar') ? t('permisos.sinPermiso') : esYoMismo(u) && u.activo === 1 ? t('config.noTeDesactives') : ''"
                   @click="alternarActivo(u)"
                 >
                   {{ u.activo === 1 ? t('config.desactivar') : t('config.activar') }}
                 </button>
                 <button
-                  class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                  class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
+                  :disabled="!permStore.puede('usuarios.administrar')"
+                  :title="!permStore.puede('usuarios.administrar') ? t('permisos.sinPermiso') : undefined"
                   @click="abrirReset(u)"
                 >{{ t('config.cambiarPassword') }}</button>
               </div>
@@ -193,7 +201,7 @@ onMounted(cargar)
           </button>
           <button
             class="rounded bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-40"
-            :disabled="nuevaPassword.length < 8 || resetting"
+            :disabled="!permStore.puede('usuarios.administrar') || nuevaPassword.length < 8 || resetting"
             @click="confirmarReset"
           >{{ resetting ? t('common.loading') : t('common.save') }}</button>
         </div>

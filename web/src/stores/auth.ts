@@ -28,7 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('agro_user', res.username)
     // Cookie needed for EventSource (SSE) which doesn't support custom headers.
     setCookie(res.token)
-    usePermissionsStore().load()
+    await usePermissionsStore().refrescar()
   }
 
   function logout() {

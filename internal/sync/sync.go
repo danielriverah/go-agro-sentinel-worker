@@ -525,13 +525,7 @@ func (s *Service) recordLastRun() {
 // RunLoop runs the sync on a schedule until ctx is cancelled.
 // When cfg.Schedule is set it uses that cron expression in cfg.Timezone;
 // otherwise it falls back to cfg.IntervalMinutes.
-// An immediate first run always happens on start.
 func (s *Service) RunLoop(ctx context.Context) error {
-	// Always run once immediately on start.
-	if err := s.RunOnce(ctx); err != nil {
-		s.logger.Error("sync cycle failed", "error", err)
-	}
-
 	if s.cfg.Schedule != "" {
 		return s.runLoopCron(ctx)
 	}
@@ -718,7 +712,6 @@ func buildProduction(dp aws.DynamoProduction, existing *domain.Production, erp *
 			}
 		}
 	}
-
 
 	// Enrich from ERP (articulos.nombre = cosecha, centros_costos.nombre used for prefix).
 	if erp != nil {

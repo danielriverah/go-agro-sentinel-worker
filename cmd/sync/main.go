@@ -22,7 +22,7 @@ import (
 
 func main() {
 	scenesOnly := flag.Bool("scenes-only", false, "Sincroniza solo escenas (fase 2) sin tocar producciones")
-	autoMode := flag.Bool("auto", false, "daemon scheduler: corre al inicio luego a las 04:00 y 22:00 UTC")
+	autoMode := flag.Bool("auto", false, "daemon scheduler: corre solo en el horario configurado")
 	flag.Parse()
 
 	cfgPath := "configs/config.yaml"
@@ -129,10 +129,9 @@ func main() {
 		return
 	}
 
-	// --auto: daemon scheduler that runs a full sync at 04:00 and 22:00 UTC
-	// (one hour before the worker's 05:00/23:00 runs). Runs immediately on
-	// startup, then sleeps until the next scheduled time. Skips a run if a
-	// previous sync process is still running (file lock).
+	// --auto: daemon scheduler that runs a full sync only at the configured
+	// schedule. It does not run on startup. Skips a run if a previous sync
+	// process is still running (file lock).
 	if *autoMode {
 		scheduleHours := []int{4, 22}
 		tz := daemon.MustLoadLocation("America/Mexico_City")
@@ -151,14 +150,12 @@ func main() {
 			defer lock.Release()
 
 			l.Info("sync auto run starting")
-			if err := svc.RunLoop(ctx); err != nil && ctx.Err() == nil {
+			if err := svc.RunOnce(ctx); err != nil && ctx.Err() == nil {
 				l.Error("sync auto run failed", "error", err)
 			} else {
 				l.Info("sync auto run completed")
 			}
 		}
-
-		runOnce()
 
 		for {
 			next := daemon.NextSchedule(scheduleHours, tz)

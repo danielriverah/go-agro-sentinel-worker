@@ -8,6 +8,7 @@ import 'leaflet/dist/leaflet.css'
 import { escenas as escenasApi, apiErrorMessage } from '@/api/client'
 import { useNavContext } from '@/composables/useNavContext'
 import { useProductionsStore } from '@/stores/productions'
+import { usePermissionsStore } from '@/stores/permissions'
 import type { Scene, ArchivoItem, IAResult, IAResultDetail, FileType, Production } from '@/api/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -18,6 +19,7 @@ let GeoRasterLayer: any = null
 const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const permStore = usePermissionsStore()
 
 const escenaId = Number(route.params.escenaId)
 const produccionId = Number(route.params.produccionId)
@@ -36,8 +38,6 @@ function goToEscena(id: number) {
 // ── State ────────────────────────────────────────────────────────────────────
 const scene      = ref<Scene | null>(null)
 const production = ref<Production | null>(null)
-// Producción donde se generó el multiband original (distinta cuando MultibandRefEscenaID != null)
-const multibandProduction = ref<Production | null>(null)
 const archivos   = ref<ArchivoItem[]>([])
 const iaResult   = ref<IAResult | null>(null)
 const loadingScene = ref(true)
@@ -121,6 +121,8 @@ const mbMax = ref(3000)
 function clamp(v: number, lo: number, hi: number) { return v < lo ? lo : v > hi ? hi : v }
 
 function mbPixelFn(values: number[]) {
+  if ((values.length >= 11 && values[10] === 0) ||
+      values.slice(0, 10).some(v => !Number.isFinite(v) || v === 0)) return 'rgba(0,0,0,0)' 
   const range = mbMax.value - mbMin.value || 1
   const band = (idx: number) =>
     clamp(Math.round(((values[idx] ?? 0) - mbMin.value) / range * 255), 0, 255)
@@ -170,7 +172,8 @@ const isJsonBand  = computed(() => JSON_TYPES.includes(selectedBand.value))
 // - tiene ia_req.json generado (el procesador lo produce al terminar)
 // - está COMPLETED y es Usable
 const canAnalyze = computed(() =>
-  hasFile('ia_req') &&
+  (production.value ? permStore.puede('escenas.analizar', production.value.CentroCostoID) : false) &&
+  scene.value?.Usable === true && quality.value?.usable !== false && hasFile('ia_req') &&
   scene.value?.Status === 'COMPLETED' &&
   (scene.value?.Usable ?? false)
 )
@@ -186,9 +189,8 @@ onMounted(async () => {
     GeoRasterLayer = grl.default ?? grl
   } catch { /* georaster no disponible */ }
 
-  await Promise.all([loadScene(), loadArchivos()])
-  // loadMultibandProduction depende de scene.MultibandRefEscenaID.
-  await Promise.all([loadIaResult(), loadMultibandProduction()])
+  await Promise.all([loadScene(), loadArchivos(), ensureProduction()])
+  await Promise.all([loadIaResult(), loadQuality()])
 
   const firstImage = IMAGE_TYPES.find(tipo => hasFile(tipo))
   if (firstImage) selectedBand.value = firstImage
@@ -229,23 +231,22 @@ async function loadScene() {
 // La producción viene del store — ya fue cargada al entrar al detalle
 const prodStore = useProductionsStore()
 production.value = prodStore.details[produccionId] ?? null
-if (!production.value) {
-  // Fallback si se entró directo por URL
-  prodStore.ensureDetail(produccionId).then(d => { if (d) production.value = d })
+async function ensureProduction() {
+  if (production.value) return
+  const detail = await prodStore.ensureDetail(produccionId)
+  if (detail) production.value = detail
 }
 
-// Carga la producción donde se generó el multiband original, cuyo tile define
-// el extent de las imágenes. Solo aplica si scene.MultibandRefEscenaID != null.
-async function loadMultibandProduction() {
-  const refId = scene.value?.MultibandRefEscenaID
-  if (!refId) return
-  // Con image_bbox la extensión ya viene en la escena: resolver la cadena
-  // costaría dos peticiones más para un dato que ya tenemos.
-  if (scene.value?.ImageBBox) return
+// Quality reports are optional for legacy scenes; absence is not zero NoData.
+type SceneQuality = { nodata_pct: number; valid_pct: number; usable: boolean; reason?: string }
+const quality = ref<SceneQuality | null>(null)
+async function loadQuality() {
+  if (!hasFile('params')) return
   try {
-    const refScene = await escenasApi.get(refId)
-    multibandProduction.value = await prodStore.ensureDetail(refScene.MonitoringProduccionID)
-  } catch { /* silencioso — fallback a la producción actual */ }
+    const response = await fetchWithAuth(streamUrl('params'))
+    const params = await response.json()
+    quality.value = params.quality ?? null
+  } catch { /* older scenes may not have a readable report */ }
 }
 
 async function loadArchivos() {
@@ -339,15 +340,13 @@ function formatFecha(iso: string | null | undefined): string {
 // cuando el multiband se reusó de otra escena, porque el raster descargado
 // cubre ese tile y los PNG se derivan de él sin recortarlo.
 function imageProd(): Production | null {
-  return multibandProduction.value ?? production.value
+  return production.value
 }
 
 // Bounds de los PNGs. El worker los reproyecta a EPSG:4326 recortados a este
 // mismo rectángulo, así que el overlay coincide por construcción.
 //
-// image_bbox ya trae la extensión real en la propia escena. El respaldo por la
-// producción de origen sigue ahí para las escenas anteriores a esa columna, que
-// todavía dependen de que esa producción exista.
+// The database trigger snapshots reused extents. Never follow the source scene.
 function getTileBounds(): L.LatLngBounds | null {
   const propio = parsePBox(scene.value?.ImageBBox)
   if (propio) return propio
@@ -507,6 +506,7 @@ function openIaModal() {
 let iaPollingTimer: ReturnType<typeof setTimeout> | null = null
 
 async function runAnalysis() {
+  if (!canAnalyze.value) return
   analyzing.value = true
   analyzeMsg.value = ''
   analyzeError.value = ''
@@ -759,6 +759,12 @@ const severidadColors: Record<string, string> = {
         </div>
 
         <!-- Map error -->
+        <div v-if="quality && (quality.nodata_pct > 0 || !quality.usable)" class="absolute bottom-7 left-3 right-3 z-[500] rounded-lg bg-amber-50/95 p-3 text-xs text-amber-900">
+          <strong>{{ quality.usable ? 'Cobertura parcial' : 'Escena no apta para análisis' }}</strong>
+          <p>{{ quality.nodata_pct.toFixed(1) }} % sin datos dentro del cultivo.</p>
+          <p v-if="quality.reason === 'calidad_no_verificada'">No se pudo verificar la nubosidad de este raster antiguo.</p>
+          <p>Las zonas transparentes no tienen observación en esta fecha; el mapa de fondo puede ser de otra fecha.</p>
+        </div>
         <div
           v-if="errorMap && !loadingMap"
           class="absolute bottom-4 left-4 z-10 bg-white border border-red-200 text-red-600 text-xs px-3 py-2 rounded-lg shadow"
@@ -836,11 +842,7 @@ const severidadColors: Record<string, string> = {
           </div>
 
           <!-- Origen del multiband cuando es compartido -->
-          <p v-if="multibandProduction && multibandProduction.ID !== production.ID" class="text-xs text-gray-400 leading-snug">
-            ↗ Imágenes derivadas del multiband de
-            <span class="text-gray-600">{{ multibandProduction.Folio || `#${multibandProduction.ID}` }}</span>,
-            por eso el recuadro verde no está centrado en este lote.
-          </p>
+
         </div>
 
         <!-- IA -->
@@ -905,7 +907,10 @@ const severidadColors: Record<string, string> = {
           </button>
 
           <!-- Motivo de bloqueo -->
-          <p v-if="!hasFile('ia_req')" class="text-xs text-gray-400 text-center">
+          <p v-if="production && !permStore.puede('escenas.analizar', production.CentroCostoID)" class="text-xs text-gray-400 text-center">
+            {{ t('permisos.sinPermiso') }}
+          </p>
+          <p v-else-if="!hasFile('ia_req')" class="text-xs text-gray-400 text-center">
             Sin ia_req.json — procesa la escena primero
           </p>
           <p v-else-if="scene && !scene.Usable" class="text-xs text-gray-400 text-center">

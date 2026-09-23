@@ -24,6 +24,23 @@ func NewMonitoreoRepo(db *sql.DB) *MonitoreoRepo {
 // hay dónde preservar la georreferencia de las escenas dependientes.
 func (r *MonitoreoRepo) HasImageBBox() bool { return r.hasImageBBox }
 
+// CheckDependents runs before any S3 deletion. The trigger/backfill must have
+// already made dependent scenes independent; the application does not fill bbox.
+func (r *MonitoreoRepo) CheckDependents(ctx context.Context, monitoringID uint) error {
+	var missing int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*)
+FROM s3_monitoring_escenas dep
+JOIN s3_monitoring_escenas origen ON origen.s3_monitoring_escena_id = dep.multiband_ref_escena_id
+WHERE origen.s3_monitoring_produccion_id = ? AND dep.image_bbox IS NULL`, monitoringID).Scan(&missing)
+	if err != nil {
+		return fmt.Errorf("verificando georreferencia de dependientes: %w", err)
+	}
+	if missing > 0 {
+		return fmt.Errorf("%d escenas dependientes sin image_bbox; completa el trigger/backfill antes de borrar", missing)
+	}
+	return nil
+}
+
 // ResumenBorradoMySQL cuenta lo eliminado en cada tabla.
 type ResumenBorradoMySQL struct {
 	Dependientes int64 `json:"escenas_dependientes_desvinculadas"`
@@ -49,6 +66,9 @@ func (r *MonitoreoRepo) EliminarMonitoreo(ctx context.Context, monitoringID uint
 	if !r.hasImageBBox {
 		return res, fmt.Errorf("falta la columna image_bbox: aplica scripts/phase3-add-image-bbox.sql antes de borrar")
 	}
+	if err := r.CheckDependents(ctx, monitoringID); err != nil {
+		return res, err
+	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -56,25 +76,7 @@ func (r *MonitoreoRepo) EliminarMonitoreo(ctx context.Context, monitoringID uint
 	}
 	defer tx.Rollback()
 
-	// 1. Preservar la georreferencia de las escenas de OTRAS producciones que
-	//    reutilizaron un multiband de ésta. Debe ir ANTES de romper el vínculo:
-	//    después ya no habría forma de saber de quién heredaban el bbox.
-	const preservar = `
-UPDATE s3_monitoring_escenas dep
-JOIN s3_monitoring_escenas origen
-  ON origen.s3_monitoring_escena_id = dep.multiband_ref_escena_id
-JOIN s3_monitoring_producciones po
-  ON po.s3_monitoring_produccion_id = origen.s3_monitoring_produccion_id
-SET dep.image_bbox = po.tile_bbox
-WHERE origen.s3_monitoring_produccion_id = ?
-  AND dep.image_bbox IS NULL
-  AND po.tile_bbox IS NOT NULL`
-
-	if _, err := tx.ExecContext(ctx, preservar, monitoringID); err != nil {
-		return res, fmt.Errorf("preservando bbox de escenas dependientes: %w", err)
-	}
-
-	// 2. Romper el vínculo: sin esto quedarían apuntando a escenas borradas.
+	// The trigger must preserve image_bbox when this reference is cleared.
 	const desvincular = `
 UPDATE s3_monitoring_escenas dep
 JOIN s3_monitoring_escenas origen

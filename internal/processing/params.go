@@ -16,38 +16,41 @@ const maxHistoricoEntries = 20
 // ParamsInput carries the current scene's computed statistics and metadata
 // needed to build a new Params document.
 type ParamsInput struct {
-	ProduccionID     int64
-	SceneID          string
-	SceneDate        time.Time
-	FechaPlantacion  time.Time
-	CloudCoverBBox   float64
-	Indices          map[domain.FileType]IndexStats
-	BandStats        map[domain.Band]BandStats
-	Coverage         CoverageStats
+	ProduccionID    int64
+	SceneID         string
+	SceneDate       time.Time
+	FechaPlantacion time.Time
+	CloudCoverBBox  float64
+	Indices         map[domain.FileType]IndexStats
+	BandStats       map[domain.Band]BandStats
+	Coverage        CoverageStats
+	Quality         *Quality
 }
 
 // HistoricoEntry summarizes one previous scene within the historical chain,
 // along with the deltas from that scene to the one immediately after it.
 type HistoricoEntry struct {
-	SceneID        string               `json:"scene_id"`
-	SceneDate      string               `json:"scene_date"`
-	CloudCoverBBox float64              `json:"cloud_cover_bbox"`
+	SceneID        string                `json:"scene_id"`
+	SceneDate      string                `json:"scene_date"`
+	CloudCoverBBox float64               `json:"cloud_cover_bbox"`
 	Indices        map[string]IndexStats `json:"indices,omitempty"`
-	Delta          map[string]float64   `json:"delta,omitempty"`
+	Delta          map[string]float64    `json:"delta,omitempty"`
+	Quality        *Quality              `json:"quality,omitempty"`
 }
 
 // Params is the JSON-serializable structure written to params.json,
 // matching the spec's schema.
 type Params struct {
-	ProduccionID        int64                  `json:"produccion_id"`
-	SceneID             string                 `json:"scene_id"`
-	SceneDate           string                 `json:"scene_date"`
-	DiasDesdePlantacion int                    `json:"dias_desde_plantacion"`
-	CloudCoverBBox      float64                `json:"cloud_cover_bbox"`
-	Coverage            CoverageStats          `json:"coverage"`
-	Indices             map[string]IndexStats  `json:"indices"`
-	BandStats           map[string]BandStats   `json:"band_stats,omitempty"`
-	Historico           []HistoricoEntry       `json:"historico,omitempty"`
+	ProduccionID        int64                 `json:"produccion_id"`
+	SceneID             string                `json:"scene_id"`
+	SceneDate           string                `json:"scene_date"`
+	DiasDesdePlantacion int                   `json:"dias_desde_plantacion"`
+	CloudCoverBBox      float64               `json:"cloud_cover_bbox"`
+	Coverage            CoverageStats         `json:"coverage"`
+	Quality             *Quality              `json:"quality,omitempty"`
+	Indices             map[string]IndexStats `json:"indices"`
+	BandStats           map[string]BandStats  `json:"band_stats,omitempty"`
+	Historico           []HistoricoEntry      `json:"historico,omitempty"`
 }
 
 // fileTypeIndexKeys maps domain.FileType index identifiers to the lowercase
@@ -85,11 +88,12 @@ func BuildParams(current ParamsInput, previousParams *Params) *Params {
 		DiasDesdePlantacion: daysBetween(current.FechaPlantacion, current.SceneDate),
 		CloudCoverBBox:      current.CloudCoverBBox,
 		Coverage:            current.Coverage,
+		Quality:             current.Quality,
 		Indices:             indices,
 		BandStats:           bandStats,
 	}
 
-	if previousParams == nil {
+	if previousParams == nil || (current.Quality != nil && !current.Quality.Usable) {
 		return params
 	}
 
@@ -101,9 +105,16 @@ func BuildParams(current ParamsInput, previousParams *Params) *Params {
 		CloudCoverBBox: previousParams.CloudCoverBBox,
 		Indices:        previousParams.Indices,
 		Delta:          computeDeltas(previousParams.Indices, indices),
+		Quality:        previousParams.Quality,
 	}
-	historico = append(historico, prevEntry)
-	historico = append(historico, previousParams.Historico...)
+	if prevEntry.Quality == nil || prevEntry.Quality.Usable {
+		historico = append(historico, prevEntry)
+	}
+	for _, entry := range previousParams.Historico {
+		if entry.Quality == nil || entry.Quality.Usable {
+			historico = append(historico, entry)
+		}
+	}
 
 	params.Historico = TrimHistorico(historico, maxHistoricoEntries)
 

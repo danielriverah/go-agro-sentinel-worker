@@ -22,6 +22,8 @@ const saving = ref(false)
 const selectedUser = ref<UsuarioAdmin | null>(null)
 const userAsignaciones = ref<UsuarioAsignaciones | null>(null)
 const loadingUser = ref(false)
+const userRoles = computed(() => userAsignaciones.value?.roles ?? [])
+const userDirectos = computed(() => userAsignaciones.value?.directos ?? [])
 
 const addRolDialog = ref(false)
 const addRolId = ref<number | null>(null)
@@ -117,10 +119,15 @@ function crearNuevo() {
 
 async function seleccionarUsuario(u: UsuarioAdmin) {
   selectedUser.value = u
+  userAsignaciones.value = null
   loadingUser.value = true
   error.value = ''
   try {
-    userAsignaciones.value = await rolesApi.getUsuarioPermisos(u.user_id)
+    const asignaciones = await rolesApi.getUsuarioPermisos(u.user_id)
+    userAsignaciones.value = {
+      roles: asignaciones.roles ?? [],
+      directos: asignaciones.directos ?? [],
+    }
   } catch (e) {
     error.value = apiErrorMessage(e)
   } finally {
@@ -135,7 +142,7 @@ function nombreCentro(ccId: number | null): string {
 
 async function agregarRolUsuario() {
   if (!selectedUser.value || addRolId.value == null) return
-  const existentes: AsignacionRol[] = (userAsignaciones.value?.roles ?? []).map(r => ({
+  const existentes: AsignacionRol[] = userRoles.value.map(r => ({
     rol_id: r.rol_id,
     centro_costo_id: r.centro_costo_id,
   }))
@@ -154,7 +161,7 @@ async function agregarRolUsuario() {
 
 async function quitarRol(index: number) {
   if (!selectedUser.value || !userAsignaciones.value) return
-  const existentes: AsignacionRol[] = userAsignaciones.value.roles
+  const existentes: AsignacionRol[] = userRoles.value
     .filter((_, i) => i !== index)
     .map(r => ({ rol_id: r.rol_id, centro_costo_id: r.centro_costo_id }))
   error.value = ''
@@ -168,7 +175,7 @@ async function quitarRol(index: number) {
 
 async function agregarPermisoDirecto() {
   if (!selectedUser.value || addPermId.value == null) return
-  const existentes = (userAsignaciones.value?.directos ?? []).map(d => ({
+  const existentes = userDirectos.value.map(d => ({
     permiso_id: d.permiso_id,
     centro_costo_id: d.centro_costo_id,
   }))
@@ -187,7 +194,7 @@ async function agregarPermisoDirecto() {
 
 async function quitarPermiso(index: number) {
   if (!selectedUser.value || !userAsignaciones.value) return
-  const existentes = userAsignaciones.value.directos
+  const existentes = userDirectos.value
     .filter((_, i) => i !== index)
     .map(d => ({ permiso_id: d.permiso_id, centro_costo_id: d.centro_costo_id }))
   error.value = ''
@@ -319,13 +326,13 @@ onMounted(cargar)
                 </button>
               </div>
               <div class="flex flex-wrap gap-1.5">
-                <span v-for="(r, i) in userAsignaciones.roles" :key="r.usuario_rol_id"
+                <span v-for="(r, i) in userRoles" :key="r.usuario_rol_id"
                   class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
                   {{ r.rol_nombre }}
                   <span class="text-blue-400">@ {{ nombreCentro(r.centro_costo_id) }}</span>
                   <button class="ml-0.5 text-blue-400 hover:text-red-500" @click="quitarRol(i)">&times;</button>
                 </span>
-                <span v-if="userAsignaciones.roles.length === 0" class="text-xs text-gray-400">—</span>
+                <span v-if="userRoles.length === 0" class="text-xs text-gray-400">—</span>
               </div>
             </div>
 
@@ -339,13 +346,13 @@ onMounted(cargar)
                 </button>
               </div>
               <div class="flex flex-wrap gap-1.5">
-                <span v-for="(d, i) in userAsignaciones.directos" :key="d.usuario_permiso_id"
+                <span v-for="(d, i) in userDirectos" :key="d.usuario_permiso_id"
                   class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
                   {{ d.permiso_clave }}
                   <span class="text-amber-400">@ {{ nombreCentro(d.centro_costo_id) }}</span>
                   <button class="ml-0.5 text-amber-400 hover:text-red-500" @click="quitarPermiso(i)">&times;</button>
                 </span>
-                <span v-if="userAsignaciones.directos.length === 0" class="text-xs text-gray-400">—</span>
+                <span v-if="userDirectos.length === 0" class="text-xs text-gray-400">—</span>
               </div>
             </div>
           </div>

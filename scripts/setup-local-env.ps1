@@ -183,10 +183,10 @@ function Start-Services {
         Write-Warning-Custom "MySQL no alcanzó estado healthy en 30 segundos"
     }
 
-    Write-Info "Iniciando LocalStack..."
-    & docker-compose -f "$ProjectRoot/docker-compose.yml" up -d localstack | Out-Null
+    Write-Info "Iniciando AWS mock externo..."
+    & docker-compose -f "$ProjectRoot/docker-compose.external-aws.yml" up -d aws-mock | Out-Null
     Start-Sleep -Seconds 5
-    Write-Success "LocalStack iniciado"
+    Write-Success "AWS mock externo iniciado"
 
     Write-Info "Iniciando API..."
     & docker-compose -f "$ProjectRoot/docker-compose.yml" up -d api | Out-Null

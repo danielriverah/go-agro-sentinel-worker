@@ -47,12 +47,6 @@ func main() {
 	}
 	defer db.Close()
 
-	awsCfg, err := aws.NewSession(cfg.AWS)
-	if err != nil {
-		l.Error("creating aws session failed", "error", err)
-		os.Exit(1)
-	}
-
 	dynamoCfg, err := aws.NewDynamoDBSession(cfg.DynamoDB)
 	if err != nil {
 		l.Error("creating dynamodb session failed", "error", err)

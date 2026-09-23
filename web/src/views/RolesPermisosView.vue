@@ -3,6 +3,7 @@ import { onMounted, ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { roles as rolesApi, apiErrorMessage } from '@/api/client'
 import type { Rol, PermisoCatalogo, UsuarioAdmin, CentroCostoItem, UsuarioAsignaciones, AsignacionRol } from '@/api/types'
+import AsignarRolAMultiplesRanchosDialog from '@/components/AsignarRolAMultiplesRanchosDialog.vue'
 
 const props = defineProps<{ usuarios: UsuarioAdmin[] }>()
 const { t } = useI18n()
@@ -32,6 +33,9 @@ const addRolCcId = ref<number | null>(null)
 const addPermDialog = ref(false)
 const addPermId = ref<number | null>(null)
 const addPermCcId = ref<number | null>(null)
+
+const showAsignarRolesDialog = ref(false)
+const asignarRolesLoading = ref(false)
 
 const modulos = computed(() => {
   const mods: Record<string, PermisoCatalogo[]> = {}
@@ -206,6 +210,29 @@ async function quitarPermiso(index: number) {
   }
 }
 
+async function asignarRolAMultiplesRanchos(rolId: number, centroIds: number[]) {
+  if (!selectedUser.value) return
+  asignarRolesLoading.value = true
+  error.value = ''
+  try {
+    const existentes: AsignacionRol[] = userRoles.value.map(r => ({
+      rol_id: r.rol_id,
+      centro_costo_id: r.centro_costo_id,
+    }))
+    for (const ccId of centroIds) {
+      existentes.push({ rol_id: rolId, centro_costo_id: ccId })
+    }
+    await rolesApi.setUsuarioRoles(selectedUser.value.user_id, existentes)
+    okMsg.value = `${t('permisos.rolAsignado')} ${centroIds.length} ${centroIds.length === 1 ? 'rancho' : 'ranchos'}`
+    showAsignarRolesDialog.value = false
+    await seleccionarUsuario(selectedUser.value)
+  } catch (e) {
+    error.value = apiErrorMessage(e)
+  } finally {
+    asignarRolesLoading.value = false
+  }
+}
+
 onMounted(cargar)
 </script>
 
@@ -320,10 +347,17 @@ onMounted(cargar)
             <div class="mb-4">
               <div class="flex items-center justify-between mb-2">
                 <h4 class="text-sm font-medium text-gray-700">{{ t('permisos.roles') }}</h4>
-                <button class="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
-                  @click="addRolDialog = true; addRolId = null; addRolCcId = null">
-                  + {{ t('permisos.agregarRol') }}
-                </button>
+                <div class="flex gap-1">
+                  <button class="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
+                    @click="addRolDialog = true; addRolId = null; addRolCcId = null">
+                    + {{ t('permisos.agregarRol') }}
+                  </button>
+                  <button class="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700 whitespace-nowrap"
+                    @click="showAsignarRolesDialog = true"
+                    :title="t('permisos.asignarAMultiplesRanchos') || 'Asignar a múltiples ranchos'">
+                    📊 {{ t('permisos.multiplesRanchos') || 'Múltiples' }}
+                  </button>
+                </div>
               </div>
               <div class="flex flex-wrap gap-1.5">
                 <span v-for="(r, i) in userRoles" :key="r.usuario_rol_id"
@@ -361,7 +395,7 @@ onMounted(cargar)
     </div>
   </div>
 
-  <!-- Add role dialog -->
+  <!-- Add role dialog (single rancho) -->
   <div v-if="addRolDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="addRolDialog = false">
     <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
       <h3 class="mb-3 font-semibold text-gray-900">{{ t('permisos.agregarRol') }}</h3>
@@ -386,6 +420,16 @@ onMounted(cargar)
       </div>
     </div>
   </div>
+
+  <!-- Asignar rol a múltiples ranchos dialog -->
+  <AsignarRolAMultiplesRanchosDialog
+    :open="showAsignarRolesDialog"
+    :roles="rolesList"
+    :centros="centros"
+    :loading="asignarRolesLoading"
+    @close="showAsignarRolesDialog = false"
+    @assign="asignarRolAMultiplesRanchos"
+  />
 
   <!-- Add direct permission dialog -->
   <div v-if="addPermDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="addPermDialog = false">

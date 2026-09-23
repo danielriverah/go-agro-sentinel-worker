@@ -14,28 +14,42 @@ services:
       - go-agro-sentinel-worker-tmp:/tmp
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
-      MYSQL_HOST: go-agro-sentinel-mysql
-      MYSQL_USER: root
-      MYSQL_PASSWORD: root
+      MYSQL_HOST: ${MYSQL_HOST:-}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-}
+      MYSQL_DB: ${MYSQL_DB:-}
 
-      AWS_ENDPOINT_URL: #http://go-agro-sentinel-localstack:4566
-      AWS_REGION: ${S3_REGION:-} #us-east-1
-      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-} #test
-      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-} # test
-# Rewrites presigned S3 URLs so browsers can reach LocalStack via the host.
-      # Change to your server IP/domain in staging/prod (leave empty for real AWS).
-      S3_PUBLIC_ENDPOINT: #http://localhost:4566
+      # AWS real por defecto. Para consumir un mock externo, define
+      # AWS_ENDPOINT_URL/DYNAMODB_ENDPOINT en .env apuntando a ese stack externo.
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: ${S3_PREFIX:-}
+      DYNAMODB_TABLE_PRODUCCIONES: ${DYNAMODB_TABLE_PRODUCCIONES:-}
+      DYNAMODB_TABLE_ESCENAS: ${DYNAMODB_TABLE_ESCENAS:-}
+      DYNAMODB_ENDPOINT: ${DYNAMODB_ENDPOINT:-}
+      DYNAMODB_REGION: ${DYNAMODB_REGION:-}
+      DYNAMODB_ACCESS_KEY_ID: ${DYNAMODB_ACCESS_KEY_ID:-}
+      DYNAMODB_SECRET_ACCESS_KEY: ${DYNAMODB_SECRET_ACCESS_KEY:-}
+      # Auth configuration
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      AUTH_TOKEN_TTL_HOURS: ${AUTH_TOKEN_TTL_HOURS:-8}
+      AUTH_DELETE_ALLOWED_USER_IDS: ${AUTH_DELETE_ALLOWED_USER_IDS:-}
+      # Logging configuration
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      LOGGING_FORMAT: ${LOGGING_FORMAT:-json}
       GOMEMLIMIT: 110MiB
       # IA Bedrock — valores en .env (nunca en este archivo)
       IA_AWS_ACCESS_KEY_ID: ${IA_AWS_ACCESS_KEY_ID:-}
+      IA_AWS_SECRET_ACCESS_KEY: ${IA_AWS_SECRET_ACCESS_KEY:-}
       BEDROCK_API_KEY: ${BEDROCK_API_KEY:-}
       IA_BEDROCK_MODEL_ID: ${IA_BEDROCK_MODEL_ID:-}
       IA_BEDROCK_REGION: ${IA_BEDROCK_REGION:-us-east-1}
-    depends_on:
-      mysql:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
 
   worker:
     container_name: go-agro-sentinel-worker
@@ -48,20 +62,33 @@ services:
       - go-agro-sentinel-worker-tmp:/tmp
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
-      MYSQL_HOST: go-agro-sentinel-mysql
-      MYSQL_USER: root
-      MYSQL_PASSWORD: root
-      AWS_ENDPOINT_URL: #http://go-agro-sentinel-localstack:4566
-      AWS_REGION: ${S3_REGION:-} #  us-east-1
-      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-} #  test
-      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-} #  test
-      SQS_QUEUE_URL: http://go-agro-sentinel-localstack:4566/000000000000/agro-sentinel-jobs
+      MYSQL_HOST: ${MYSQL_HOST:-}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-}
+      MYSQL_DB: ${MYSQL_DB:-}
+
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: ${S3_PREFIX:-}
+      DYNAMODB_TABLE_PRODUCCIONES: ${DYNAMODB_TABLE_PRODUCCIONES:-}
+      DYNAMODB_TABLE_ESCENAS: ${DYNAMODB_TABLE_ESCENAS:-}
+      DYNAMODB_ENDPOINT: ${DYNAMODB_ENDPOINT:-}
+      DYNAMODB_REGION: ${DYNAMODB_REGION:-}
+      DYNAMODB_ACCESS_KEY_ID: ${DYNAMODB_ACCESS_KEY_ID:-}
+      DYNAMODB_SECRET_ACCESS_KEY: ${DYNAMODB_SECRET_ACCESS_KEY:-}
+      # Worker scheduler configuration
+      WORKER_SCHEDULE: ${WORKER_SCHEDULE:-}
+      WORKER_TIMEZONE: ${WORKER_TIMEZONE:-America/Mexico_City}
+      # Logging configuration
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      LOGGING_FORMAT: ${LOGGING_FORMAT:-json}
       GOMEMLIMIT: 460MiB
-    depends_on:
-      mysql:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
 
   sync:
     container_name: go-agro-sentinel-sync
@@ -74,56 +101,32 @@ services:
       - go-agro-sentinel-worker-tmp:/tmp
     environment:
       CONFIG_PATH: /etc/agro-sentinel/config.yaml
-      MYSQL_HOST: go-agro-sentinel-mysql
-      MYSQL_USER: root
-      MYSQL_PASSWORD: root
-      # S3/SQS usan LocalStack (datos locales)
-      AWS_ENDPOINT_URL: #http://go-agro-sentinel-localstack:4566
-      AWS_REGION: ${S3_REGION:-} #us-east-1 us-east-1
-      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-} #test test
-      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-} # test test
+      MYSQL_HOST: ${MYSQL_HOST:-}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-}
+      MYSQL_DB: ${MYSQL_DB:-}
+
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: ${S3_PREFIX:-}
+      DYNAMODB_TABLE_PRODUCCIONES: ${DYNAMODB_TABLE_PRODUCCIONES:-}
+      DYNAMODB_TABLE_ESCENAS: ${DYNAMODB_TABLE_ESCENAS:-}
+      DYNAMODB_ENDPOINT: ${DYNAMODB_ENDPOINT:-}
+      DYNAMODB_REGION: ${DYNAMODB_REGION:-}
+      DYNAMODB_ACCESS_KEY_ID: ${DYNAMODB_ACCESS_KEY_ID:-}
+      DYNAMODB_SECRET_ACCESS_KEY: ${DYNAMODB_SECRET_ACCESS_KEY:-}
+      # Sync scheduler configuration
+      SYNC_SCHEDULE: ${SYNC_SCHEDULE:-}
+      SYNC_TIMEZONE: ${SYNC_TIMEZONE:-America/Mexico_City}
+      # Logging configuration
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      LOGGING_FORMAT: ${LOGGING_FORMAT:-json}
       GOMEMLIMIT: 110MiB
-    depends_on:
-      mysql:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
-
-  mysql:
-    container_name: go-agro-sentinel-mysql
-    image: mysql:8.0
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: agro
-    ports:
-      - "3309:3306"
-    volumes:
-      - go-agro-sentinel-mysql-data:/var/lib/mysql
-      - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/init-mysql.sql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
-      retries: 10
-
-  localstack:
-    container_name: go-agro-sentinel-localstack
-    image: localstack/localstack:3.8
-    restart: always
-    ports:
-      - "4566:4566"
-    environment:
-      SERVICES: s3,sqs,dynamodb
-    volumes:
-      - go-agro-sentinel-localstack-data:/var/lib/localstack
-      - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init.sh
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
 volumes:
-  go-agro-sentinel-mysql-data:
-  go-agro-sentinel-localstack-data:
   go-agro-sentinel-worker-tmp:

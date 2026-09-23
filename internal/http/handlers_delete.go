@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"agro-sentinel-worker/internal/auth"
 	"agro-sentinel-worker/internal/daemon"
 	"agro-sentinel-worker/internal/infrastructure/database"
 )
@@ -63,7 +64,7 @@ func (h *Handlers) EliminarMonitoreo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verificar permiso monitoreo.eliminar para esta producción (per-rancho)
-	if !h.verificarPermisoEliminar(w, r, prod.MonitoringID) {
+	if !h.verificarPermisoEliminar(w, r, prod.ID) {
 		return
 	}
 

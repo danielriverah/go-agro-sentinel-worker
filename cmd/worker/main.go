@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	awssdk "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/robfig/cron/v3"
 
 	"agro-sentinel-worker/internal/config"
@@ -104,14 +103,22 @@ func main() {
 	}
 	defer db.Close()
 
-	awsCfg, err := awssdk.LoadDefaultConfig(ctx)
+	// Create AWS session for SQS (general AWS credentials).
+	awsCfg, err := aws.NewSession(cfg.AWS)
 	if err != nil {
-		l.Error("loading AWS config failed", "error", err)
+		l.Error("creating aws session failed", "error", err)
+		os.Exit(1)
+	}
+
+	// Create S3 session (with S3-specific credentials from .env).
+	s3Session, err := aws.NewS3Session(cfg.S3, cfg.AWS)
+	if err != nil {
+		l.Error("creating s3 session failed", "error", err)
 		os.Exit(1)
 	}
 
 	executor := gdal.NewExecutor(cfg.GDAL.TimeoutSeconds)
-	s3Client := aws.NewS3Client(awsCfg)
+	s3Client := aws.NewS3Client(s3Session)
 
 	// Validate S3 bucket access.
 	if err := health.CheckS3(validateCtx, s3Client, cfg.S3.Bucket); err != nil {

@@ -55,10 +55,10 @@ func main() {
 	// RunMigrations is a no-op; schema is managed by the DBA.
 	_ = database.RunMigrations(db)
 
-	// Create AWS session.
-	awsCfg, err := aws.NewSession(cfg.AWS)
+	// Create S3 session (with S3-specific credentials from .env).
+	s3Session, err := aws.NewS3Session(cfg.S3, cfg.AWS)
 	if err != nil {
-		l.Error("creating aws session failed", "error", err)
+		l.Error("creating s3 session failed", "error", err)
 		os.Exit(1)
 	}
 
@@ -83,7 +83,7 @@ func main() {
 
 	// Validate all dependencies before continuing.
 	dynamoClient := aws.NewDynamoDBClient(dynamoCfg)
-	s3Client := aws.NewS3Client(awsCfg)
+	s3Client := aws.NewS3Client(s3Session)
 
 	if err := health.CheckDynamoDB(ctx, dynamoClient, cfg.DynamoDB.TableProducciones); err != nil {
 		l.Error("dynamodb health check failed", "error", err)

@@ -54,6 +54,60 @@ func Middleware(secretKey []byte) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireAdmin protege las rutas de administración.
+//
+// Hoy sólo exige una sesión válida: el modelo de usuarios todavía no tiene el
+// concepto de rol. Es el punto de extensión previsto — cuando exista la
+// columna es_admin y viaje en los Claims, basta con comprobarla aquí; ni las
+// rutas ni los manejadores cambian.
+func RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ClaimsFromContext(r.Context()) == nil {
+			writeAuthError(w, http.StatusUnauthorized, "autenticación requerida")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RequireUserIn restringe una ruta a una lista explícita de usuarios.
+//
+// Existe para el borrado de monitoreo: es irreversible y toca MySQL, S3 y
+// DynamoDB, así que tener sesión no basta mientras no exista un rol
+// persistido. Es una medida puente — cuando llegue es_admin, esta lista se
+// sustituye por la comprobación del rol.
+//
+// Una lista vacía deniega a todos: si el servicio se despliega sin configurar
+// AUTH_DELETE_ALLOWED_USER_IDS, la operación queda cerrada, nunca abierta.
+func RequireUserIn(allowed []int64) func(http.Handler) http.Handler {
+	permitidos := make(map[int64]struct{}, len(allowed))
+	for _, id := range allowed {
+		permitidos[id] = struct{}{}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := ClaimsFromContext(r.Context())
+			if claims == nil {
+				writeAuthError(w, http.StatusUnauthorized, "autenticación requerida")
+				return
+			}
+			if _, ok := permitidos[claims.UserID]; !ok {
+				writeAuthError(w, http.StatusForbidden,
+					"tu usuario no está autorizado para esta operación; se configura en AUTH_DELETE_ALLOWED_USER_IDS")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func writeAuthError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
 // extractToken extrae el token del header Authorization o de la cookie agro_token.
 func extractToken(r *http.Request) string {
 	// 1. Header: Authorization: Bearer <token>

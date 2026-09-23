@@ -279,6 +279,81 @@ func (c *S3Client) HeadBucket(ctx context.Context, bucket string) error {
 	return nil
 }
 
+// s3DeleteBatchSize es el máximo que admite DeleteObjects en una llamada.
+const s3DeleteBatchSize = 1000
+
+// DeletePrefix borra todos los objetos bajo prefix y devuelve cuántos eliminó.
+//
+// Se usa al eliminar el monitoreo de una producción. Va primero, antes de
+// tocar MySQL: si fallara al revés, quedarían archivos huérfanos: invisibles,
+// imposibles de localizar y facturando de forma indefinida.
+//
+// Es idempotente: sobre un prefijo ya vacío no borra nada y no falla.
+func (c *S3Client) DeletePrefix(ctx context.Context, bucket, prefix string) (int, error) {
+	if prefix == "" {
+		// Un prefijo vacío borraría el bucket entero.
+		return 0, &domain.ProcessingError{
+			Type:    domain.ErrValidation,
+			Message: "DeletePrefix requiere un prefijo no vacío",
+		}
+	}
+
+	var borrados int
+	paginator := s3.NewListObjectsV2Paginator(c.client, &s3.ListObjectsV2Input{
+		Bucket: awssdk.String(bucket),
+		Prefix: awssdk.String(prefix),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return borrados, &domain.ProcessingError{
+				Type:    domain.ErrS3,
+				Message: fmt.Sprintf("listando s3://%s/%s para borrar", bucket, prefix),
+				Wrapped: err,
+			}
+		}
+
+		ids := make([]types.ObjectIdentifier, 0, len(page.Contents))
+		for _, obj := range page.Contents {
+			if obj.Key != nil {
+				ids = append(ids, types.ObjectIdentifier{Key: obj.Key})
+			}
+		}
+
+		for start := 0; start < len(ids); start += s3DeleteBatchSize {
+			end := start + s3DeleteBatchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			lote := ids[start:end]
+
+			out, err := c.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+				Bucket: awssdk.String(bucket),
+				Delete: &types.Delete{Objects: lote, Quiet: awssdk.Bool(true)},
+			})
+			if err != nil {
+				return borrados, &domain.ProcessingError{
+					Type:    domain.ErrS3,
+					Message: fmt.Sprintf("borrando objetos de s3://%s/%s", bucket, prefix),
+					Wrapped: err,
+				}
+			}
+			// Con Quiet sólo vuelven los fallos; el resto se dio por borrado.
+			if len(out.Errors) > 0 {
+				return borrados, &domain.ProcessingError{
+					Type: domain.ErrS3,
+					Message: fmt.Sprintf("s3 rechazó %d de %d objetos bajo %s (primero: %s)",
+						len(out.Errors), len(lote), prefix, awssdk.ToString(out.Errors[0].Message)),
+				}
+			}
+			borrados += len(lote)
+		}
+	}
+
+	return borrados, nil
+}
+
 // BuildKey builds the canonical S3 key for a scene file: prefix/produccionID/sceneID/fileName.
 func BuildKey(prefix string, produccionID int64, sceneID string, fileName string) string {
 	return fmt.Sprintf("%s/%d/%s/%s", prefix, produccionID, sceneID, fileName)

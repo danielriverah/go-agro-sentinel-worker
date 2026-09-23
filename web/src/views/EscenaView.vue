@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import L from 'leaflet'
@@ -74,6 +75,19 @@ const JSON_TYPES: FileType[] = ['params', 'ia_req', 'ia_result']
 const selectedBand  = ref<FileType>('rgb')
 const jsonContent   = ref<Record<string, unknown> | null>(null)
 const jsonError     = ref('')
+
+// Barra de bandas: en pantallas estrechas no cabe entera y hay que avisar de
+// que continúa, además de traer la banda activa a la vista.
+const bandBarEl = ref<HTMLElement | null>(null)
+const bandBarOverflows = ref(false)
+
+function refreshBandBar() {
+  const el = bandBarEl.value
+  if (!el) return
+  bandBarOverflows.value = el.scrollWidth > el.clientWidth + 1
+  const active = el.querySelector<HTMLElement>(`[data-band="${selectedBand.value}"]`)
+  active?.scrollIntoView({ block: 'nearest', inline: 'center' })
+}
 
 // ── Multiband controls ────────────────────────────────────────────────────────
 // Band order in multiband.tif (from domain.AllSpectralBands()):
@@ -180,6 +194,7 @@ onMounted(async () => {
   if (firstImage) selectedBand.value = firstImage
 
   await nextTick()
+  refreshBandBar()
   initMap()
   if (hasFile(selectedBand.value)) {
     await loadBandOnMap(selectedBand.value)
@@ -189,6 +204,14 @@ onMounted(async () => {
 onUnmounted(() => {
   if (map) { map.remove(); map = null }
   if (iaPollingTimer) { clearTimeout(iaPollingTimer); iaPollingTimer = null }
+})
+
+// El contenedor cambia de tamaño al rotar el teléfono y al cruzar el punto de
+// corte lg (de mapa apilado a mapa en columna). Sin esto Leaflet conserva las
+// medidas viejas y deja franjas de tiles sin cargar.
+useResizeObserver(mapEl, () => {
+  map?.invalidateSize()
+  refreshBandBar()
 })
 
 // ── Data loaders ──────────────────────────────────────────────────────────────
@@ -216,6 +239,9 @@ if (!production.value) {
 async function loadMultibandProduction() {
   const refId = scene.value?.MultibandRefEscenaID
   if (!refId) return
+  // Con image_bbox la extensión ya viene en la escena: resolver la cadena
+  // costaría dos peticiones más para un dato que ya tenemos.
+  if (scene.value?.ImageBBox) return
   try {
     const refScene = await escenasApi.get(refId)
     multibandProduction.value = await prodStore.ensureDetail(refScene.MonitoringProduccionID)
@@ -318,7 +344,13 @@ function imageProd(): Production | null {
 
 // Bounds de los PNGs. El worker los reproyecta a EPSG:4326 recortados a este
 // mismo rectángulo, así que el overlay coincide por construcción.
+//
+// image_bbox ya trae la extensión real en la propia escena. El respaldo por la
+// producción de origen sigue ahí para las escenas anteriores a esa columna, que
+// todavía dependen de que esa producción exista.
 function getTileBounds(): L.LatLngBounds | null {
+  const propio = parsePBox(scene.value?.ImageBBox)
+  if (propio) return propio
   return parsePBox(imageProd()?.TileBBoxJSON)
 }
 
@@ -438,6 +470,7 @@ async function loadBandOnMap(tipo: FileType) {
 // ── Band selector ─────────────────────────────────────────────────────────────
 async function selectBand(tipo: FileType) {
   selectedBand.value = tipo
+  nextTick(refreshBandBar)
   jsonContent.value = null
   jsonError.value = ''
   if (JSON_TYPES.includes(tipo)) {
@@ -550,10 +583,12 @@ const severidadColors: Record<string, string> = {
 </script>
 
 <template>
-  <div class="flex flex-col h-[calc(100vh-56px)]">
+  <!-- En móvil la altura crece con el contenido y la página hace scroll; a
+       partir de lg se fija al viewport y cada panel scrollea por su cuenta. -->
+  <div class="flex flex-col min-h-[calc(100vh-56px)] lg:h-[calc(100vh-56px)] overflow-x-hidden">
 
     <!-- Top bar -->
-    <div class="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4 shrink-0 flex-wrap">
+    <div class="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-x-4 gap-y-1 shrink-0 flex-wrap">
       <button
         @click="router.push({ name: 'produccion', params: { id: produccionId } })"
         class="text-sm text-gray-500 hover:text-gray-800 transition-colors shrink-0"
@@ -603,26 +638,37 @@ const severidadColors: Record<string, string> = {
       <div v-if="errorScene" class="text-xs text-red-500">{{ errorScene }}</div>
     </div>
 
-    <!-- Band selector: solo imágenes para el mapa -->
-    <div class="bg-white border-b border-gray-200 px-4 py-2 shrink-0 overflow-x-auto">
-      <div class="flex items-center gap-2 min-w-max">
-        <span class="text-xs text-gray-400 shrink-0">Mapa:</span>
-        <template v-for="tipo in IMAGE_TYPES" :key="tipo">
-          <button
-            @click="hasFile(tipo as FileType) && selectBand(tipo as FileType)"
-            class="text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
-            :class="[
-              selectedBand === tipo
-                ? 'bg-green-600 text-white'
-                : hasFile(tipo as FileType)
-                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  : 'bg-gray-50 text-gray-300 cursor-not-allowed'
-            ]"
-          >
-            {{ t(`band.${tipo}`, tipo) }}
-          </button>
-        </template>
+    <!-- Band selector: solo imágenes para el mapa.
+         min-w-0 es imprescindible: sin él, el min-w-max de dentro estira este
+         panel y desborda la página entera en lugar de scrollear aquí. -->
+    <div class="relative shrink-0 min-w-0">
+      <div ref="bandBarEl" class="bg-white border-b border-gray-200 px-4 py-2 min-w-0 overflow-x-auto">
+        <div class="flex items-center gap-2 min-w-max">
+          <span class="text-xs text-gray-400 shrink-0">Mapa:</span>
+          <template v-for="tipo in IMAGE_TYPES" :key="tipo">
+            <button
+              :data-band="tipo"
+              @click="hasFile(tipo as FileType) && selectBand(tipo as FileType)"
+              class="text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+              :class="[
+                selectedBand === tipo
+                  ? 'bg-green-600 text-white'
+                  : hasFile(tipo as FileType)
+                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+              ]"
+            >
+              {{ t(`band.${tipo}`, tipo) }}
+            </button>
+          </template>
+        </div>
       </div>
+      <!-- Las 12 bandas miden ~1700px: en móvil sólo se ve la primera pantalla,
+           así que este degradado avisa de que la lista continúa. -->
+      <div
+        v-if="bandBarOverflows"
+        class="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-white to-transparent"
+      />
     </div>
 
     <!-- Multiband controls (only when multiband selected) -->
@@ -681,10 +727,11 @@ const severidadColors: Record<string, string> = {
     </div>
 
     <!-- Main content -->
-    <div class="flex-1 flex overflow-hidden">
+    <div class="flex-1 flex flex-col lg:flex-row lg:overflow-hidden min-w-0">
 
-      <!-- Map / JSON viewer -->
-      <div class="flex-1 relative overflow-hidden">
+      <!-- Map / JSON viewer — alto fijo en móvil para que el mapa siga siendo
+           usable; a partir de lg ocupa el espacio restante -->
+      <div class="relative overflow-hidden h-[60vh] shrink-0 lg:h-auto lg:flex-1 lg:shrink">
 
         <!-- Controles de mapa -->
         <div v-if="isImageBand" class="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
@@ -723,8 +770,9 @@ const severidadColors: Record<string, string> = {
         <div ref="mapEl" class="w-full h-full" />
       </div>
 
-      <!-- Panel lateral: contexto de la producción + resultado IA -->
-      <div class="w-72 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
+      <!-- Panel lateral: contexto de la producción + resultado IA.
+           Debajo del mapa en móvil, a un costado desde lg. -->
+      <div class="w-full lg:w-72 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col shrink-0 lg:overflow-y-auto">
 
         <!-- Producción -->
         <div v-if="production" class="px-4 py-3 border-b border-gray-100 space-y-2.5">

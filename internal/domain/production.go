@@ -14,6 +14,21 @@ type BBox struct {
 	MaxY float64
 }
 
+// MarshalJSONColumn serializa el bbox al formato que usan las columnas
+// tile_bbox e image_bbox, de modo que ParseTileBBox pueda releerlo.
+func (b BBox) MarshalJSONColumn() json.RawMessage {
+	raw, err := json.Marshal(struct {
+		MinLon float64 `json:"min_lon"`
+		MinLat float64 `json:"min_lat"`
+		MaxLon float64 `json:"max_lon"`
+		MaxLat float64 `json:"max_lat"`
+	}{b.MinX, b.MinY, b.MaxX, b.MaxY})
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
 func (b BBox) Validate() error {
 	if b.MinX >= b.MaxX {
 		return errors.New("bbox: MinX must be less than MaxX")

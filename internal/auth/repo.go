@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 // Repo llama las funciones/procedimientos MySQL de autenticación.
@@ -133,6 +136,97 @@ func (r *Repo) CreateUsuario(ctx context.Context, username, password string) (*U
 		Username: res.Username,
 		Activo:   true,
 	}, nil
+}
+
+// UsuarioAdmin es una fila de la lista de administración. Nunca lleva hash ni
+// salt: esos no salen de la base.
+type UsuarioAdmin struct {
+	ID            int64  `json:"user_id"`
+	Username      string `json:"username"`
+	Activo        int    `json:"activo"`
+	FechaCreacion string `json:"fecha_creacion"`
+}
+
+// listResult es la forma que devuelve fn_list_usuarios.
+type listResult struct {
+	OK       bool           `json:"ok"`
+	Code     string         `json:"code"`
+	Usuarios []UsuarioAdmin `json:"usuarios"`
+}
+
+// procMissing traduce el error de MySQL "el procedimiento no existe" al error
+// de negocio, para que la API pueda decir qué script falta por aplicar en vez
+// de devolver un 500 opaco.
+func procMissing(err error) bool {
+	var myErr *mysql.MySQLError
+	if !errors.As(err, &myErr) {
+		return false
+	}
+	// 1305 = ER_SP_DOES_NOT_EXIST, 1370 = ER_PROCACCESS_DENIED_ERROR
+	return myErr.Number == 1305 || myErr.Number == 1370
+}
+
+// ListUsuarios devuelve todos los usuarios llamando fn_list_usuarios.
+//
+// Error de negocio: ErrAdminProcsMissing cuando el procedimiento no existe.
+func (r *Repo) ListUsuarios(ctx context.Context) ([]UsuarioAdmin, error) {
+	var raw string
+	if err := r.db.QueryRowContext(ctx, "SELECT fn_list_usuarios()").Scan(&raw); err != nil {
+		if procMissing(err) {
+			return nil, ErrAdminProcsMissing
+		}
+		return nil, fmt.Errorf("db: %w", err)
+	}
+
+	var res listResult
+	if err := json.Unmarshal([]byte(raw), &res); err != nil {
+		return nil, fmt.Errorf("json inesperado de fn_list_usuarios: %w", err)
+	}
+	if !res.OK {
+		return nil, mapCode(res.Code)
+	}
+	return res.Usuarios, nil
+}
+
+// SetUsuarioActivo activa o desactiva un usuario llamando sp_set_usuario_activo.
+//
+// Errores de negocio: ErrUserNotFound, ErrLastActiveUser, ErrAdminProcsMissing.
+func (r *Repo) SetUsuarioActivo(ctx context.Context, userID int64, activo bool) error {
+	flag := 0
+	if activo {
+		flag = 1
+	}
+
+	res, err := r.scanProcedure(ctx, "CALL sp_set_usuario_activo(?, ?)", userID, flag)
+	if err != nil {
+		if procMissing(err) {
+			return ErrAdminProcsMissing
+		}
+		return err
+	}
+	if !res.OK {
+		return mapCode(res.Code)
+	}
+	return nil
+}
+
+// AdminResetPassword restablece la contraseña sin conocer la actual, llamando
+// sp_admin_reset_password. Es lo que distingue a esta operación de
+// ChangePassword, que exige la contraseña vigente.
+//
+// Errores de negocio: ErrUserNotFound, ErrPasswordTooShort, ErrAdminProcsMissing.
+func (r *Repo) AdminResetPassword(ctx context.Context, userID int64, nueva string) error {
+	res, err := r.scanProcedure(ctx, "CALL sp_admin_reset_password(?, ?)", userID, nueva)
+	if err != nil {
+		if procMissing(err) {
+			return ErrAdminProcsMissing
+		}
+		return err
+	}
+	if !res.OK {
+		return mapCode(res.Code)
+	}
+	return nil
 }
 
 // ChangePassword cambia la contraseña llamando sp_change_password.

@@ -36,6 +36,16 @@ const router = createRouter({
       name: 'escena',
       component: () => import('@/views/EscenaView.vue'),
     },
+    {
+      path: '/alertas',
+      name: 'alertas',
+      component: () => import('@/views/AlertasView.vue'),
+    },
+    {
+      path: '/configuracion',
+      name: 'configuracion',
+      component: () => import('@/views/ConfiguracionView.vue'),
+    },
   ],
 })
 

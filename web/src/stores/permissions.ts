@@ -17,8 +17,12 @@ export const usePermissionsStore = defineStore('permissions', () => {
   }
 
   async function refrescar() {
-    await permisosApi.refrescar()
-    await load()
+    try {
+      data.value = await permisosApi.refrescar()
+    } catch {
+      data.value = { global: [], por_rancho: {}, ranchos_todos: false, degraded: true }
+    }
+    loaded.value = true
   }
 
   function reset() {

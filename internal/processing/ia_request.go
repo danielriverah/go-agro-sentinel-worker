@@ -13,15 +13,18 @@ import (
 const recentHistoricoWindow = 3
 
 // IARequestProduccion carries the production-level context sent to the IA.
+//
+// No lleva fechas ni plazos administrativos (fin de monitoreo, max_dias_monitoring):
+// describen hasta cuándo se sigue el lote, no cuánto dura el cultivo. Enviarlos hacía
+// que el modelo los leyera como fecha de cosecha y declarara madurez por calendario.
 type IARequestProduccion struct {
 	ID                  int64  `json:"id"`
 	Folio               string `json:"folio,omitempty"`
 	Rancho              string `json:"rancho,omitempty"`
-	Cosecha             string `json:"cosecha"`
+	Cultivo             string `json:"cultivo"`
 	Variedades          string `json:"variedades,omitempty"`
 	FechaPlantacion     string `json:"fecha_plantacion,omitempty"`
 	DiasDesdePlantacion int    `json:"dias_desde_plantacion"`
-	DiasCicloAprox      int    `json:"dias_ciclo_aprox,omitempty"`
 }
 
 // IARequestEscena carries the scene-level context sent to the IA.
@@ -102,14 +105,16 @@ func BuildIARequest(in IARequestInput) *IARequest {
 
 	req := &IARequest{
 		Produccion: IARequestProduccion{
-			ID:                  prod.ProduccionID,
-			Folio:               prod.Folio,
-			Rancho:              prod.Rancho,
-			Cosecha:             prod.Cosecha,
+			ID:     prod.ProduccionID,
+			Folio:  prod.Folio,
+			Rancho: prod.Rancho,
+			// La columna se llama "cosecha" por herencia del ERP, pero contiene
+			// la especie cultivada (p. ej. "REPOLLO ROJO"), que es lo que el
+			// modelo necesita para razonar sobre la duración real del ciclo.
+			Cultivo:             prod.Cosecha,
 			Variedades:          prod.Vaiedades,
 			FechaPlantacion:     plantacionStr,
 			DiasDesdePlantacion: p.DiasDesdePlantacion,
-			DiasCicloAprox:      prod.MaxDiasMonitoring,
 		},
 		FechaAnalisis: time.Now().UTC().Format(dateLayout),
 		Escena: IARequestEscena{

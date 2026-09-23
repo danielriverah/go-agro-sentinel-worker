@@ -14,12 +14,30 @@ import (
 // SceneRepo provides access to s3_monitoring_escenas.
 type SceneRepo struct {
 	db *sql.DB
+	// hasImageBBox: la columna la aplica el DBA por separado, así que puede
+	// faltar cuando este binario ya está desplegado. Se detecta una vez y las
+	// consultas se arman en consecuencia, para no romper el pipeline entre el
+	// despliegue del código y el del esquema.
+	hasImageBBox bool
+	upsertQ      string
+	selectCols   string
 }
 
 // NewSceneRepo creates a new SceneRepo.
 func NewSceneRepo(db *sql.DB) *SceneRepo {
-	return &SceneRepo{db: db}
+	has := columnExists(db, "s3_monitoring_escenas", "image_bbox")
+	return &SceneRepo{
+		db:           db,
+		hasImageBBox: has,
+		upsertQ:      buildSceneUpsert(has),
+		selectCols:   buildSceneSelectCols(has),
+	}
 }
+
+// HasImageBBox indica si la columna image_bbox ya existe. El borrado de
+// monitoreo la exige: sin ella no puede preservarse la georreferencia de las
+// escenas que dependen de la producción que se va a eliminar.
+func (r *SceneRepo) HasImageBBox() bool { return r.hasImageBBox }
 
 // Upsert inserts a scene or updates sync fields if (s3_monitoring_produccion_id, scene_name) already exists.
 func (r *SceneRepo) Upsert(ctx context.Context, s *domain.Scene) error {
@@ -30,15 +48,48 @@ func (r *SceneRepo) Upsert(ctx context.Context, s *domain.Scene) error {
 		status = domain.StatusPending
 	}
 
-	const q = `
+	createdAt := s.FechaCreacion
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+
+	args := []any{
+		s.MonitoringProduccionID, s.SceneName, nullTimeVal(s.Fecha),
+		nullString(s.SceneJsonKey), nullString(s.SceneJsonUri),
+		nullFloat64Ptr(s.CloudCover), status,
+		boolToTinyint(s.TruthTifExists), boolToTinyint(s.RenderTifExists),
+		boolToTinyint(s.ParamsExists), boolToTinyint(s.IaExists),
+		nullTimeVal(s.Fase2CompletaAt), nullString(s.LatestIaRiesgoNivel),
+		nullTimeVal(s.LatestIaFechaAnalisis), nullTimeVal(s.UltimaSincronizacion),
+		nullFloat64Ptr(s.ProductionCloud),
+		boolToTinyint(s.Usable), boolToTinyint(s.Analysis),
+		nullString(s.UrlsBandas), nullString(s.BaseBands),
+		nullUint64Ptr(s.MultibandRefEscenaID),
+	}
+	if r.hasImageBBox {
+		args = append(args, nullJSON(s.ImageBBox))
+	}
+	args = append(args, createdAt, now)
+
+	if _, err := r.db.ExecContext(ctx, r.upsertQ, args...); err != nil {
+		return fmt.Errorf("upserting scene: %w", err)
+	}
+
+	return nil
+}
+
+// Los marcadores IMG_* se sustituyen por el fragmento de image_bbox o por nada,
+// según exista la columna. Una plantilla única evita que las dos variantes se
+// desincronicen.
+const sceneUpsertTmpl = `
 INSERT INTO s3_monitoring_escenas (
 	s3_monitoring_produccion_id, scene_name, fecha, scene_json_key, scene_json_uri,
 	cloud_cover, status, truth_tif_exists, render_tif_exists, params_exists, ia_exists,
 	fase2_completa_at, latest_ia_riesgo_nivel, latest_ia_fecha_analisis,
 	ultima_sincronizacion, production_cloud, usable, analysis, urls_bandas, base_bands,
-	multiband_ref_escena_id,
+	multiband_ref_escena_id,IMG_COL
 	fecha_creacion, fecha_actualizacion
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,IMG_VAL ?, ?)
 ON DUPLICATE KEY UPDATE
 	fecha                    = VALUES(fecha),
 	scene_json_key           = VALUES(scene_json_key),
@@ -58,52 +109,45 @@ ON DUPLICATE KEY UPDATE
 	analysis                 = VALUES(analysis),
 	urls_bandas              = VALUES(urls_bandas),
 	base_bands               = VALUES(base_bands),
-	multiband_ref_escena_id  = VALUES(multiband_ref_escena_id),
+	multiband_ref_escena_id  = VALUES(multiband_ref_escena_id),IMG_UPD
 	fecha_actualizacion      = VALUES(fecha_actualizacion)
 `
 
-	createdAt := s.FechaCreacion
-	if createdAt.IsZero() {
-		createdAt = now
+func buildSceneUpsert(withImageBBox bool) string {
+	if !withImageBBox {
+		return strings.NewReplacer("IMG_COL", "", "IMG_VAL", "", "IMG_UPD", "").Replace(sceneUpsertTmpl)
 	}
-
-	_, err := r.db.ExecContext(ctx, q,
-		s.MonitoringProduccionID, s.SceneName, nullTimeVal(s.Fecha),
-		nullString(s.SceneJsonKey), nullString(s.SceneJsonUri),
-		nullFloat64Ptr(s.CloudCover), status,
-		boolToTinyint(s.TruthTifExists), boolToTinyint(s.RenderTifExists),
-		boolToTinyint(s.ParamsExists), boolToTinyint(s.IaExists),
-		nullTimeVal(s.Fase2CompletaAt), nullString(s.LatestIaRiesgoNivel),
-		nullTimeVal(s.LatestIaFechaAnalisis), nullTimeVal(s.UltimaSincronizacion),
-		nullFloat64Ptr(s.ProductionCloud),
-		boolToTinyint(s.Usable), boolToTinyint(s.Analysis),
-		nullString(s.UrlsBandas), nullString(s.BaseBands),
-		nullUint64Ptr(s.MultibandRefEscenaID),
-		createdAt, now,
-	)
-	if err != nil {
-		return fmt.Errorf("upserting scene: %w", err)
-	}
-
-	return nil
+	return strings.NewReplacer(
+		"IMG_COL", "\n\timage_bbox,",
+		"IMG_VAL", " ?,",
+		"IMG_UPD", "\n\timage_bbox               = VALUES(image_bbox),",
+	).Replace(sceneUpsertTmpl)
 }
 
-const sceneSelectCols = `
+const sceneSelectTmpl = `
 SELECT e.s3_monitoring_escena_id, e.s3_monitoring_produccion_id,
 	e.scene_name, e.fecha, e.scene_json_key, e.scene_json_uri,
 	e.cloud_cover, e.status,
 	e.truth_tif_exists, e.render_tif_exists, e.params_exists, e.ia_exists,
 	e.fase2_completa_at, e.latest_ia_riesgo_nivel, e.latest_ia_fecha_analisis,
 	e.ultima_sincronizacion, e.production_cloud, e.usable, e.analysis, e.urls_bandas, e.base_bands,
-	e.multiband_ref_escena_id,
+	e.multiband_ref_escena_id,IMG_SEL
 	e.fecha_creacion, e.fecha_actualizacion`
+
+func buildSceneSelectCols(withImageBBox bool) string {
+	sel := ""
+	if withImageBBox {
+		sel = "\n\te.image_bbox,"
+	}
+	return strings.NewReplacer("IMG_SEL", sel).Replace(sceneSelectTmpl)
+}
 
 // GetByID fetches a scene by its primary key.
 func (r *SceneRepo) GetByID(ctx context.Context, id uint64) (*domain.Scene, error) {
-	q := sceneSelectCols + ` FROM s3_monitoring_escenas e WHERE e.s3_monitoring_escena_id = ?`
+	q := r.selectCols + ` FROM s3_monitoring_escenas e WHERE e.s3_monitoring_escena_id = ?`
 
 	row := r.db.QueryRowContext(ctx, q, id)
-	s, err := scanScene(row)
+	s, err := scanScene(row, r.hasImageBBox)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -117,13 +161,13 @@ func (r *SceneRepo) GetByID(ctx context.Context, id uint64) (*domain.Scene, erro
 // GetByProduccionAndSceneName fetches a scene by ERP produccion_id and scene name,
 // joining through s3_monitoring_producciones to resolve the FK.
 func (r *SceneRepo) GetByProduccionAndSceneName(ctx context.Context, produccionID int64, sceneName string) (*domain.Scene, error) {
-	q := sceneSelectCols + `
+	q := r.selectCols + `
 FROM s3_monitoring_escenas e
 JOIN s3_monitoring_producciones p ON e.s3_monitoring_produccion_id = p.s3_monitoring_produccion_id
 WHERE p.produccion_id = ? AND e.scene_name = ?`
 
 	row := r.db.QueryRowContext(ctx, q, produccionID, sceneName)
-	s, err := scanScene(row)
+	s, err := scanScene(row, r.hasImageBBox)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -136,7 +180,7 @@ WHERE p.produccion_id = ? AND e.scene_name = ?`
 
 // ListByMonitoringProduccion returns all scenes for a s3_monitoring_produccion_id.
 func (r *SceneRepo) ListByMonitoringProduccion(ctx context.Context, monitoringProduccionID uint) ([]*domain.Scene, error) {
-	q := sceneSelectCols + `
+	q := r.selectCols + `
 FROM s3_monitoring_escenas e
 WHERE e.s3_monitoring_produccion_id = ?
 ORDER BY e.fecha DESC`
@@ -149,7 +193,7 @@ ORDER BY e.fecha DESC`
 
 	var results []*domain.Scene
 	for rows.Next() {
-		s, err := scanScene(rows)
+		s, err := scanScene(rows, r.hasImageBBox)
 		if err != nil {
 			return nil, fmt.Errorf("scanning scene row: %w", err)
 		}
@@ -394,7 +438,7 @@ LIMIT 1`
 // Rows are ordered so that scenes that already have a multiband.tif
 // (truth_tif_exists=1) come first so later productions can reuse their multiband.
 func (r *SceneRepo) ListAllBySceneName(ctx context.Context, sceneName string) ([]*domain.Scene, error) {
-	q := sceneSelectCols + `
+	q := r.selectCols + `
 FROM s3_monitoring_escenas e
 JOIN s3_monitoring_producciones p ON e.s3_monitoring_produccion_id = p.s3_monitoring_produccion_id
 WHERE e.scene_name = ?
@@ -411,7 +455,7 @@ ORDER BY e.truth_tif_exists DESC, e.s3_monitoring_escena_id ASC`
 
 	var results []*domain.Scene
 	for rows.Next() {
-		s, err := scanScene(rows)
+		s, err := scanScene(rows, r.hasImageBBox)
 		if err != nil {
 			return nil, fmt.Errorf("scanning scene row: %w", err)
 		}
@@ -424,14 +468,14 @@ ORDER BY e.truth_tif_exists DESC, e.s3_monitoring_escena_id ASC`
 // has status PENDING or FAILED for the given s3_monitoring_produccion_id.
 // Returns nil when no actionable scene exists.
 func (r *SceneRepo) GetOldestPendingByProduccion(ctx context.Context, monitoringProduccionID uint) (*domain.Scene, error) {
-	q := sceneSelectCols + `
+	q := r.selectCols + `
 FROM s3_monitoring_escenas e
 WHERE e.s3_monitoring_produccion_id = ? AND e.status IN (?, ?)
 ORDER BY e.fecha ASC
 LIMIT 1`
 
 	row := r.db.QueryRowContext(ctx, q, monitoringProduccionID, domain.StatusPending, domain.StatusFailed)
-	s, err := scanScene(row)
+	s, err := scanScene(row, r.hasImageBBox)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -446,7 +490,7 @@ LIMIT 1`
 // identify which scenes need their params/ia_req regenerated after the
 // historical chain changes.
 func (r *SceneRepo) ListFromDateByProduccion(ctx context.Context, monitoringProduccionID uint, fromDate time.Time) ([]*domain.Scene, error) {
-	q := sceneSelectCols + `
+	q := r.selectCols + `
 FROM s3_monitoring_escenas e
 WHERE e.s3_monitoring_produccion_id = ? AND e.fecha >= ?
 ORDER BY e.fecha ASC`
@@ -459,7 +503,7 @@ ORDER BY e.fecha ASC`
 
 	var results []*domain.Scene
 	for rows.Next() {
-		s, err := scanScene(rows)
+		s, err := scanScene(rows, r.hasImageBBox)
 		if err != nil {
 			return nil, fmt.Errorf("scanning scene row: %w", err)
 		}
@@ -472,14 +516,14 @@ ORDER BY e.fecha ASC`
 // that also has a params.json registered (params_exists=1). Scenes without
 // params are skipped so the historical chain is never broken by a gap.
 func (r *SceneRepo) GetPreviousUsableScene(ctx context.Context, monitoringProduccionID uint, beforeDate time.Time) (*domain.Scene, error) {
-	q := sceneSelectCols + `
+	q := r.selectCols + `
 FROM s3_monitoring_escenas e
 WHERE e.s3_monitoring_produccion_id = ? AND e.fecha < ? AND e.usable = 1 AND e.params_exists = 1
 ORDER BY e.fecha DESC
 LIMIT 1`
 
 	row := r.db.QueryRowContext(ctx, q, monitoringProduccionID, beforeDate)
-	s, err := scanScene(row)
+	s, err := scanScene(row, r.hasImageBBox)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -490,7 +534,9 @@ LIMIT 1`
 	return s, nil
 }
 
-func scanScene(row rowScanner) (*domain.Scene, error) {
+// withImageBBox debe coincidir con las columnas que armó buildSceneSelectCols:
+// el orden de destinos del Scan tiene que reflejar el de la consulta.
+func scanScene(row rowScanner, withImageBBox bool) (*domain.Scene, error) {
 	var s domain.Scene
 	var monitoring int
 	var fecha, fase2, latestIaFecha, ultimaSync, fechaAct sql.NullTime
@@ -498,8 +544,9 @@ func scanScene(row rowScanner) (*domain.Scene, error) {
 	var sceneJsonKey, sceneJsonUri, latestIaRiesgo, urlsBandas, baseBands sql.NullString
 	var truthTif, renderTif, paramsEx, iaEx, usable, analysis int
 	var multibandRef sql.NullInt64
+	var imageBBox sql.NullString
 
-	err := row.Scan(
+	dest := []any{
 		&s.ID, &monitoring,
 		&s.SceneName, &fecha, &sceneJsonKey, &sceneJsonUri,
 		&cloudCover, &s.Status,
@@ -507,10 +554,18 @@ func scanScene(row rowScanner) (*domain.Scene, error) {
 		&fase2, &latestIaRiesgo, &latestIaFecha,
 		&ultimaSync, &productionCloud, &usable, &analysis, &urlsBandas, &baseBands,
 		&multibandRef,
-		&s.FechaCreacion, &fechaAct,
-	)
-	if err != nil {
+	}
+	if withImageBBox {
+		dest = append(dest, &imageBBox)
+	}
+	dest = append(dest, &s.FechaCreacion, &fechaAct)
+
+	if err := row.Scan(dest...); err != nil {
 		return nil, err
+	}
+
+	if imageBBox.Valid && imageBBox.String != "" {
+		s.ImageBBox = []byte(imageBBox.String)
 	}
 
 	s.MonitoringProduccionID = uint(monitoring)
@@ -612,6 +667,73 @@ WHERE e.scene_name = ?
 func parseTileBBoxStr(raw string) *domain.BBox {
 	prod := &domain.Production{TileBBoxJSON: []byte(raw)}
 	return prod.ParseTileBBox()
+}
+
+// ListTimelineRows returns every scene of a production in chronological order,
+// each with the content of its params.json — the source of the per-index
+// statistics the timeline chart plots.
+//
+// params.json is read from json_content, which both the worker and the sync
+// indexer populate for JSON outputs, so the whole timeline comes from a single
+// query and never touches S3. The correlated subquery (rather than a join)
+// guarantees one row per scene even if a scene ever ends up with more than one
+// params file indexed.
+func (r *SceneRepo) ListTimelineRows(ctx context.Context, monitoringProduccionID uint) ([]*domain.TimelineRow, error) {
+	const q = `
+SELECT e.s3_monitoring_escena_id, e.scene_name, e.fecha, e.cloud_cover,
+       e.production_cloud, e.usable, e.status,
+       (SELECT a.json_content
+          FROM s3_monitoring_escena_archivos a
+         WHERE a.s3_monitoring_escena_id = e.s3_monitoring_escena_id
+           AND a.tipo = 'params'
+         ORDER BY a.s3_monitoring_escena_archivo_id DESC
+         LIMIT 1) AS params_json
+FROM s3_monitoring_escenas e
+WHERE e.s3_monitoring_produccion_id = ?
+ORDER BY e.fecha ASC, e.s3_monitoring_escena_id ASC`
+
+	rows, err := r.db.QueryContext(ctx, q, monitoringProduccionID)
+	if err != nil {
+		return nil, fmt.Errorf("listing timeline rows: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*domain.TimelineRow
+	for rows.Next() {
+		var (
+			row        domain.TimelineRow
+			fecha      sql.NullTime
+			cloudCover sql.NullFloat64
+			prodCloud  sql.NullFloat64
+			usable     sql.NullBool
+			status     sql.NullString
+			paramsJSON sql.NullString
+		)
+		if err := rows.Scan(&row.EscenaID, &row.SceneName, &fecha, &cloudCover,
+			&prodCloud, &usable, &status, &paramsJSON); err != nil {
+			return nil, fmt.Errorf("scanning timeline row: %w", err)
+		}
+
+		if fecha.Valid {
+			f := fecha.Time
+			row.Fecha = &f
+		}
+		if cloudCover.Valid {
+			c := cloudCover.Float64
+			row.CloudCover = &c
+		}
+		if prodCloud.Valid {
+			p := prodCloud.Float64
+			row.ProductionCloud = &p
+		}
+		row.Usable = usable.Valid && usable.Bool
+		row.Status = status.String
+		row.ParamsJSON = paramsJSON.String
+
+		results = append(results, &row)
+	}
+
+	return results, rows.Err()
 }
 
 func nullTimeVal(t *time.Time) any {

@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // JobStatus is the processing status of a scene.
 type JobStatus = string
@@ -38,8 +41,14 @@ type Scene struct {
 	UrlsBandas             string     // urls_bandas
 	BaseBands              string     // base_bands — URL base de las bandas (sin nombre de archivo)
 	MultibandRefEscenaID   *uint64    // multiband_ref_escena_id — escena origen del multiband reutilizado (NULL = propio)
-	FechaCreacion          time.Time  // fecha_creacion
-	FechaActualizacion     *time.Time // fecha_actualizacion
+	// ImageBBox es la extensión geográfica real del raster de esta escena.
+	// Vacío = la escena usa el tile_bbox de su propia producción; con valor =
+	// tile_bbox de la escena origen cuando se reutilizó su multiband. Guardarlo
+	// aquí hace la escena autosuficiente: sin él, la georreferencia depende de
+	// que la producción origen siga existiendo.
+	ImageBBox          json.RawMessage // image_bbox (JSON)
+	FechaCreacion      time.Time       // fecha_creacion
+	FechaActualizacion *time.Time      // fecha_actualizacion
 
 	// In-memory only — not columns of s3_monitoring_escenas.
 	RetryCount   int
@@ -52,8 +61,44 @@ func (s *Scene) NeedsProcessing() bool {
 	return s.Status == StatusPending || s.Status == ""
 }
 
+// EffectiveBBox devuelve la extensión geográfica real de las imágenes de esta
+// escena: la propia cuando reutilizó el multiband de otra producción, y el
+// tile_bbox de prod en caso contrario.
+//
+// Es el único punto donde debe resolverse esa extensión: seguir la cadena
+// multiband_ref_escena_id a mano deja de funcionar en cuanto se borra la
+// producción origen.
+func (s *Scene) EffectiveBBox(prod *Production) *BBox {
+	// image_bbox se copia tal cual desde tile_bbox, así que comparte formato
+	// y puede reutilizar el mismo parser.
+	if len(s.ImageBBox) > 0 {
+		if b := (&Production{TileBBoxJSON: s.ImageBBox}).ParseTileBBox(); b != nil {
+			return b
+		}
+	}
+	if prod == nil {
+		return nil
+	}
+	return prod.ParseTileBBox()
+}
+
 func (s *Scene) CanRetry(maxRetries int) bool {
 	return s.Status == StatusFailed && s.RetryCount < maxRetries
+}
+
+// TimelineRow is one scene's raw input for the indices timeline: the scene
+// fields the chart needs plus the params.json content, which carries the
+// per-index statistics. ParamsJSON is empty when the scene has no params file
+// indexed yet.
+type TimelineRow struct {
+	EscenaID        uint64
+	SceneName       string
+	Fecha           *time.Time
+	CloudCover      *float64
+	ProductionCloud *float64
+	Usable          bool
+	Status          string
+	ParamsJSON      string
 }
 
 // MultibandSource is a candidate multiband.tif from another production that

@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"agro-sentinel-worker/internal/domain"
 )
@@ -179,6 +180,116 @@ func (c *DynamoDBClient) CloseProduccion(ctx context.Context, tableName string, 
 		return fmt.Errorf("closing produccion %d in dynamodb: %w", produccionID, err)
 	}
 	return nil
+}
+
+// dynamoBatchWriteLimit es el máximo de operaciones por BatchWriteItem.
+const dynamoBatchWriteLimit = 25
+
+// DeleteProduccion borra el ítem de una producción en la tabla de producciones.
+// Clave: produccion_id (partición) + folio (ordenación), igual que CloseProduccion.
+//
+// Es idempotente: borrar un ítem inexistente no da error en DynamoDB.
+func (c *DynamoDBClient) DeleteProduccion(ctx context.Context, tableName string, produccionID int64, folio string) error {
+	key, err := attributevalue.MarshalMap(map[string]interface{}{
+		"produccion_id": produccionID,
+		"folio":         folio,
+	})
+	if err != nil {
+		return &domain.ProcessingError{Type: domain.ErrDynamoDB, Message: "marshaling key", Wrapped: err}
+	}
+
+	if _, err := c.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: awssdk.String(tableName),
+		Key:       key,
+	}); err != nil {
+		return &domain.ProcessingError{
+			Type:    domain.ErrDynamoDB,
+			Message: fmt.Sprintf("borrando produccion %d de %s", produccionID, tableName),
+			Wrapped: err,
+		}
+	}
+	return nil
+}
+
+// DeleteEscenas borra todas las escenas de una producción y devuelve cuántas
+// eliminó. La partición es "PROD#<produccion_id>", así que primero hay que
+// consultar las claves de ordenación y luego borrarlas en lotes.
+func (c *DynamoDBClient) DeleteEscenas(ctx context.Context, tableName string, produccionID int64) (int, error) {
+	pk := fmt.Sprintf("PROD#%d", produccionID)
+
+	keyCond := expression.Key("id").Equal(expression.Value(pk))
+	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).Build()
+	if err != nil {
+		return 0, &domain.ProcessingError{Type: domain.ErrDynamoDB, Message: "building key condition", Wrapped: err}
+	}
+
+	var pendientes []types.WriteRequest
+	paginator := dynamodb.NewQueryPaginator(c.client, &dynamodb.QueryInput{
+		TableName:                 awssdk.String(tableName),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		// Sólo se necesitan las claves para poder borrar.
+		ProjectionExpression: awssdk.String("id, clave"),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return 0, &domain.ProcessingError{
+				Type:    domain.ErrDynamoDB,
+				Message: fmt.Sprintf("consultando escenas de %s", pk),
+				Wrapped: err,
+			}
+		}
+		for _, item := range page.Items {
+			pendientes = append(pendientes, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{Key: item},
+			})
+		}
+	}
+
+	for start := 0; start < len(pendientes); start += dynamoBatchWriteLimit {
+		end := start + dynamoBatchWriteLimit
+		if end > len(pendientes) {
+			end = len(pendientes)
+		}
+		if err := c.batchDelete(ctx, tableName, pendientes[start:end]); err != nil {
+			return start, err
+		}
+	}
+
+	return len(pendientes), nil
+}
+
+// batchDelete envía un lote y reintenta los elementos que DynamoDB devuelve
+// sin procesar, que es su forma normal de aplicar contrapresión.
+func (c *DynamoDBClient) batchDelete(ctx context.Context, tableName string, lote []types.WriteRequest) error {
+	const maxIntentos = 5
+
+	pendiente := map[string][]types.WriteRequest{tableName: lote}
+
+	for intento := 0; intento < maxIntentos; intento++ {
+		out, err := c.client.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems: pendiente,
+		})
+		if err != nil {
+			return &domain.ProcessingError{
+				Type:    domain.ErrDynamoDB,
+				Message: fmt.Sprintf("borrando lote de escenas en %s", tableName),
+				Wrapped: err,
+			}
+		}
+		if len(out.UnprocessedItems) == 0 || len(out.UnprocessedItems[tableName]) == 0 {
+			return nil
+		}
+		pendiente = out.UnprocessedItems
+	}
+
+	return &domain.ProcessingError{
+		Type:    domain.ErrDynamoDB,
+		Message: fmt.Sprintf("quedaron escenas sin borrar en %s tras %d intentos", tableName, maxIntentos),
+	}
 }
 
 // DescribeTable checks if a table exists and is accessible.

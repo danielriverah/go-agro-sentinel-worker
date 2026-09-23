@@ -42,7 +42,7 @@ type GDALExecutor interface {
 type ProductionRepository interface {
 	GetByProduccionID(ctx context.Context, produccionID int64) (*domain.Production, error)
 	GetByMonitoringID(ctx context.Context, monitoringID uint) (*domain.Production, error)
-	SetBloqueado(ctx context.Context, produccionID int64, bloqueado bool) error
+	// bloqueado no se escribe nunca: lo deriva un trigger de posible_cosecha.
 	UpdatePosibleCosecha(ctx context.Context, produccionID int64, posible bool) error
 	GetERPFolioRancho(ctx context.Context, produccionID int64) (folio, rancho string, err error)
 }
@@ -759,6 +759,12 @@ func (w *Worker) process(ctx context.Context, production *domain.Production, sce
 	finalScene.ParamsExists = params != nil
 	finalScene.RenderTifExists = true
 	finalScene.MultibandRefEscenaID = multibandRefID
+	// Cuando el multiband viene de otra producción, las imágenes heredan SU
+	// extensión. Se guarda en la escena para que la georreferencia no dependa
+	// de que esa producción siga existiendo.
+	if multibandRefID != nil && imageExtent != nil {
+		finalScene.ImageBBox = imageExtent.MarshalJSONColumn()
+	}
 	now := time.Now().UTC()
 	finalScene.UltimaSincronizacion = &now
 

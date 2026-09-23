@@ -49,9 +49,21 @@ type SceneUpdater interface {
 }
 
 // ProductionUpdater updates production-level flags derived from IA results.
+//
+// Sólo escribe posible_cosecha: un trigger de la tabla deriva bloqueado de ese
+// campo, así que tocar bloqueado desde aquí desincronizaría ambos.
 type ProductionUpdater interface {
 	UpdatePosibleCosecha(ctx context.Context, produccionID int64, posible bool) error
-	SetBloqueado(ctx context.Context, produccionID int64, bloqueado bool) error
+}
+
+// SceneReader lee la escena para dar contexto a la alerta (nombre y fecha).
+type SceneReader interface {
+	GetByID(ctx context.Context, escenaID uint64) (*domain.Scene, error)
+}
+
+// AlertaCreator registra un aviso derivado del análisis.
+type AlertaCreator interface {
+	Crear(ctx context.Context, a *domain.Alerta) (uint64, error)
 }
 
 // Deps bundles Analyzer dependencies.
@@ -62,7 +74,9 @@ type Deps struct {
 	Bedrock     BedrockAnalyzer
 	Results     IAResultRepo
 	Scenes      SceneUpdater
-	Productions ProductionUpdater // optional; updates posible_cosecha and bloqueado
+	SceneInfo   SceneReader       // optional; da nombre y fecha de escena a las alertas
+	Productions ProductionUpdater // optional; updates posible_cosecha
+	Alertas     AlertaCreator     // optional; registra avisos en monitoring_alertas
 	Bucket      string
 	TempDir     string
 	Logger      *slog.Logger
@@ -92,6 +106,41 @@ func New(deps Deps) *Analyzer {
 
 // ErrAlreadyRunning is returned when an analysis for the same scene is already in progress.
 var ErrAlreadyRunning = fmt.Errorf("ia analysis already in progress for this scene")
+
+// registrarAlerta deja constancia del análisis en monitoring_alertas.
+//
+// Se emite para todo análisis, no sólo los preocupantes: la vista de avisos
+// es el registro de lo que la IA ha ido observando, y un "óptimo" también
+// informa (por ejemplo, que un lote entró en ventana de cosecha).
+//
+// Nunca propaga el error: el análisis ya se guardó y perderlo por no poder
+// escribir el aviso sería peor que quedarse sin el aviso.
+func (a *Analyzer) registrarAlerta(ctx context.Context, result *domain.IAResultSummary, produccionID int64, escenaID uint64) {
+	if a.deps.Alertas == nil || produccionID <= 0 || result == nil {
+		return
+	}
+
+	var sceneName string
+	var sceneDate *time.Time
+	if a.deps.SceneInfo != nil {
+		if scene, err := a.deps.SceneInfo.GetByID(ctx, escenaID); err == nil && scene != nil {
+			sceneName = scene.SceneName
+			sceneDate = scene.Fecha
+		}
+	}
+
+	alerta := ConstruirAlerta(result, produccionID, sceneName, sceneDate)
+	id, err := a.deps.Alertas.Crear(ctx, alerta)
+	if err != nil {
+		a.log.Warn("ia: no se pudo registrar la alerta",
+			"produccion_id", produccionID, "escena_id", escenaID, "error", err)
+		return
+	}
+
+	a.log.Info("ia: alerta registrada",
+		"alerta_id", id, "produccion_id", produccionID,
+		"severidad", alerta.Severity, "estado_clave", result.EstadoClave)
+}
 
 // deriveResultKey builds the S3 key for the IA result JSON from the ia_req key.
 // e.g. "produccion/2044/.../multiband.ia_req.json" → "produccion/2044/.../multiband.ia.json"
@@ -288,20 +337,19 @@ func (a *Analyzer) Analyze(ctx context.Context, escenaID uint64, s3Key string, p
 		}
 	}
 
-	// Update posible_cosecha on the production when the model flagged it.
+	// posible_cosecha es el único campo que se escribe: el trigger de la tabla
+	// deriva bloqueado de él. Un análisis que detecta cosecha bloquea el lote;
+	// uno que ya no la ve, lo libera.
 	if a.deps.Productions != nil && produccionID > 0 {
 		if err := a.deps.Productions.UpdatePosibleCosecha(ctx, produccionID, posibleCosecha); err != nil {
 			a.log.Warn("ia: could not update posible_cosecha", "produccion_id", produccionID, "error", err)
 		}
-		// Block monitoring when the analysis is critical.
-		if result.EstadoClave == "critico" {
-			if err := a.deps.Productions.SetBloqueado(ctx, produccionID, true); err != nil {
-				a.log.Warn("ia: could not block production", "produccion_id", produccionID, "error", err)
-			} else {
-				a.log.Info("ia: production blocked due to critico analysis", "produccion_id", produccionID)
-			}
-		}
 	}
+
+	// Un diagnóstico preocupante ya no detiene el monitoreo: avisa. Bloquear
+	// por estado crítico dejaba el lote sin seguimiento justo cuando más falta
+	// hacía, y confundía "hay que mirar esto" con "está listo para cosecha".
+	a.registrarAlerta(ctx, result, produccionID, escenaID)
 
 	a.log.Info("ia analysis completed", "escena_id", escenaID,
 		"estado_clave", result.EstadoClave, "riesgo", result.RiesgoNivel,

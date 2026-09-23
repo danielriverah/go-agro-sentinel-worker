@@ -72,7 +72,11 @@ func TestProductionRepo_UpsertNoDuplicate(t *testing.T) {
 	}
 }
 
-func TestProductionRepo_SetBloqueado(t *testing.T) {
+// Bloquear y desbloquear se hacen escribiendo posible_cosecha: la columna
+// bloqueado la deriva un trigger de la tabla. El repo sólo responde de
+// posible_cosecha; que el trigger propague se comprueba contra la base real,
+// porque no todos los entornos de prueba lo tienen instalado.
+func TestProductionRepo_UpdatePosibleCosecha(t *testing.T) {
 	db := testDB(t)
 	repo := NewProductionRepo(db)
 	ctx := context.Background()
@@ -82,28 +86,28 @@ func TestProductionRepo_SetBloqueado(t *testing.T) {
 		t.Fatalf("Upsert: %v", err)
 	}
 
-	if err := repo.SetBloqueado(ctx, produccionID, true); err != nil {
-		t.Fatalf("SetBloqueado true: %v", err)
+	if err := repo.UpdatePosibleCosecha(ctx, produccionID, true); err != nil {
+		t.Fatalf("UpdatePosibleCosecha true: %v", err)
 	}
 
 	got, err := repo.GetByProduccionID(ctx, produccionID)
 	if err != nil {
 		t.Fatalf("GetByProduccionID: %v", err)
 	}
-	if !got.Bloqueado {
-		t.Fatal("expected bloqueado true")
+	if !got.PosibleCosecha {
+		t.Fatal("expected posible_cosecha true")
 	}
 
-	if err := repo.SetBloqueado(ctx, produccionID, false); err != nil {
-		t.Fatalf("SetBloqueado false: %v", err)
+	if err := repo.UpdatePosibleCosecha(ctx, produccionID, false); err != nil {
+		t.Fatalf("UpdatePosibleCosecha false: %v", err)
 	}
 
 	got, err = repo.GetByProduccionID(ctx, produccionID)
 	if err != nil {
 		t.Fatalf("GetByProduccionID: %v", err)
 	}
-	if got.Bloqueado {
-		t.Fatal("expected bloqueado false after unblock")
+	if got.PosibleCosecha {
+		t.Fatal("expected posible_cosecha false")
 	}
 }
 

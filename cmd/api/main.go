@@ -160,7 +160,6 @@ func main() {
 		Monitoreo:               database.NewMonitoreoRepo(db),
 		DynamoTablaProducciones: cfg.DynamoDB.TableProducciones,
 		DynamoTablaEscenas:      cfg.DynamoDB.TableEscenas,
-		DeleteAllowedUserIDs:    cfg.Auth.DeleteAllowedUserIDs,
 
 		Log: l,
 		DB:          db,
@@ -200,14 +199,6 @@ func main() {
 		SecretKey: jwtSecret,
 		TokenTTL:  tokenTTL,
 		Log:       l,
-	}
-
-	// El borrado de monitoreo es irreversible, así que por omisión queda
-	// cerrado. Decirlo al arrancar evita que alguien lo dé por roto al ver un 403.
-	if len(cfg.Auth.DeleteAllowedUserIDs) == 0 {
-		l.Warn("eliminar monitoreo está deshabilitado: ningún usuario autorizado — configura AUTH_DELETE_ALLOWED_USER_IDS")
-	} else {
-		l.Info("eliminar monitoreo habilitado", "usuarios_autorizados", len(cfg.Auth.DeleteAllowedUserIDs))
 	}
 
 	router := apphttp.NewRouter(l, h, authH, jwtSecret)

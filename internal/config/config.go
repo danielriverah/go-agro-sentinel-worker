@@ -56,8 +56,8 @@ type ServerConfig struct {
 }
 
 type SyncConfig struct {
-	IntervalMinutes     int    `yaml:"interval_minutes"`
-	DiasMargenMonitoreo int    `yaml:"dias_margen_monitoreo"`
+	IntervalMinutes     int `yaml:"interval_minutes"`
+	DiasMargenMonitoreo int `yaml:"dias_margen_monitoreo"`
 	// Schedule is a standard 5-field cron expression (minute hour dom month dow).
 	// When set, it takes precedence over IntervalMinutes.
 	// Example: "0 6,18 * * *" → runs at 06:00 and 18:00 in Timezone.
@@ -95,8 +95,11 @@ type AWSConfig struct {
 }
 
 type S3Config struct {
-	Bucket         string `yaml:"bucket"`
-	Prefix         string `yaml:"prefix"`
+	Bucket string `yaml:"bucket"`
+	Prefix string `yaml:"prefix"`
+	// Region es la región AWS para S3 (ej: us-west-2).
+	// Override: S3_REGION env var. Si vacía, hereda de aws.region.
+	Region string `yaml:"region"`
 	// PublicEndpoint rewrites presigned URLs for browser consumption.
 	// Set to "http://localhost:4566" when running LocalStack behind Docker
 	// so the browser can reach S3 via the host machine instead of the
@@ -141,9 +144,9 @@ type IAConfig struct {
 type BedrockConfig struct {
 	ModelID         string `yaml:"model_id"`
 	Region          string `yaml:"region"`
-	APIKey          string `yaml:"api_key"`            // overridden by BEDROCK_API_KEY (used as bearer token)
-	AccessKeyID     string `yaml:"access_key_id"`      // overridden by IA_AWS_ACCESS_KEY_ID
-	SecretAccessKey string `yaml:"secret_access_key"`  // overridden by IA_AWS_SECRET_ACCESS_KEY
+	APIKey          string `yaml:"api_key"`           // overridden by BEDROCK_API_KEY (used as bearer token)
+	AccessKeyID     string `yaml:"access_key_id"`     // overridden by IA_AWS_ACCESS_KEY_ID
+	SecretAccessKey string `yaml:"secret_access_key"` // overridden by IA_AWS_SECRET_ACCESS_KEY
 	TimeoutSeconds  int    `yaml:"timeout_seconds"`
 }
 
@@ -182,6 +185,12 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("S3_BUCKET"); v != "" {
 		cfg.S3.Bucket = v
 	}
+	if v := os.Getenv("S3_PREFIX"); v != "" {
+		cfg.S3.Prefix = v
+	}
+	if v := os.Getenv("S3_REGION"); v != "" {
+		cfg.S3.Region = v
+	}
 	if v := os.Getenv("S3_PUBLIC_ENDPOINT"); v != "" {
 		cfg.S3.PublicEndpoint = v
 	}
@@ -197,6 +206,8 @@ func applyEnvOverrides(cfg *Config) {
 		}
 	}
 	if v := os.Getenv("MYSQL_DATABASE"); v != "" {
+		cfg.MySQL.Database = v
+	} else if v := os.Getenv("MYSQL_DB"); v != "" {
 		cfg.MySQL.Database = v
 	}
 	if v := os.Getenv("MYSQL_USER"); v != "" {
@@ -230,6 +241,12 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("DYNAMODB_REGION"); v != "" {
 		cfg.DynamoDB.Region = v
+	}
+	if v := os.Getenv("DYNAMODB_TABLE_PRODUCCIONES"); v != "" {
+		cfg.DynamoDB.TableProducciones = v
+	}
+	if v := os.Getenv("DYNAMODB_TABLE_ESCENAS"); v != "" {
+		cfg.DynamoDB.TableEscenas = v
 	}
 	if v := os.Getenv("DYNAMODB_ENDPOINT"); v != "" {
 		cfg.DynamoDB.Endpoint = v

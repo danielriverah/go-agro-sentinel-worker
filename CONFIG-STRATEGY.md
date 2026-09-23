@@ -64,15 +64,16 @@ El proyecto utiliza un **modelo de configuración de dos capas**:
 ## 📋 Variables de Entorno Soportadas
 
 ### AWS y S3
-| Variable | Valor YAML Afectado | Default | Requerida |
-|----------|------------------|---------|-----------|
-| `AWS_REGION` | `aws.region` | — | Sí |
-| `AWS_ENDPOINT_URL` | `aws.endpoint` | vacío (AWS real) | No |
-| `S3_BUCKET` | `s3.bucket` | — | Sí |
-| `S3_PREFIX` | `s3.prefix` | `sentinel/producciones` | No |
-| `S3_PUBLIC_ENDPOINT` | `s3.public_endpoint` | vacío (sin reescritura) | No |
-| `S3_ACCESS_KEY_ID` | AWS credential | — | Sí (en AWS real) |
-| `S3_SECRET_ACCESS_KEY` | AWS credential | — | Sí (en AWS real) |
+| Variable | Valor YAML Afectado | Default | Requerida | Nota |
+|----------|------------------|---------|-----------|------|
+| `AWS_REGION` | `aws.region` | — | Sí | Región general AWS |
+| `AWS_ENDPOINT_URL` | `aws.endpoint` | vacío (AWS real) | No | Mock endpoint (LocalStack) |
+| `S3_REGION` | `s3.region` | vacío (hereda de aws.region) | No | **Región independiente para S3** |
+| `S3_BUCKET` | `s3.bucket` | — | Sí | Nombre del bucket S3 |
+| `S3_PREFIX` | `s3.prefix` | `sentinel/producciones` | No | Prefijo en el bucket |
+| `S3_PUBLIC_ENDPOINT` | `s3.public_endpoint` | vacío (sin reescritura) | No | URLs presigned en navegador |
+| `S3_ACCESS_KEY_ID` | AWS S3 credential | — | Sí (en AWS real) | Credenciales específicas de S3 |
+| `S3_SECRET_ACCESS_KEY` | AWS S3 credential | — | Sí (en AWS real) | Credenciales específicas de S3 |
 
 ### DynamoDB
 | Variable | Valor YAML Afectado | Default | Requerida |

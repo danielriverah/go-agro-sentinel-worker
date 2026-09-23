@@ -27,6 +27,7 @@ aws:
 s3:
   bucket: agro-sentinel-bucket
   prefix: sentinel/producciones
+  region: ""            # us-west-2 — dejar vacío para heredar de aws.region
 
 sqs:
   queue_url: ""
